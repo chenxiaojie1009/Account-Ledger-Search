@@ -5,6 +5,7 @@
   /* ---------------- 尺寸常量 ---------------- */
   var CAB_W = 1.7, CAB_H = 2.6, CAB_D = 0.55;
   var CAB_GAP = 0.06;                      // 柜子之间缝隙（小一点）
+  var CAM_FOV = 26;                        // 较小视场角：透视变形更小，柜子上下宽度一致
   var CAB_TOP = 2.6;
   var SIDE_T = 0.045;                      // 侧板厚
   var INNER_W = CAB_W - SIDE_T * 2;        // 双开柜内宽
@@ -366,7 +367,7 @@
 
     // 顶板与冠线
     addBox(w, 0.16, CAB_D + 0.02, matBody, 0, 2.31 + 0.08, 0.01, 0.02);
-    addBox(w + 0.05, 0.13, CAB_D + 0.04, matBoard, 0, 2.6 - 0.065, 0.012, 0.02);
+    addBox(w + 0.02, 0.13, CAB_D + 0.04, matBoard, 0, 2.6 - 0.065, 0.012, 0.02);
 
     // 玻璃柜门 + 门框（对开/单开）
     addGlassFront(group, cab.doorType, innerW);
@@ -700,9 +701,9 @@
   /* ---------------- 相机 ---------------- */
   function fitParams() {
     var aspect = camera ? camera.aspect : 16 / 10;
-    var vHalf = Math.tan(THREE.MathUtils.degToRad(40) / 2);
+    var vHalf = Math.tan(THREE.MathUtils.degToRad(CAM_FOV) / 2);
     var hHalf = vHalf * aspect;
-    var az = 0, el = 0.06;
+    var az = 0, el = 0.015;
     var ca = Math.cos(az), ce = Math.cos(el);
     var c = ca * ce, s = Math.sin(az) * ce;
     var margin = 0.4;
@@ -723,7 +724,7 @@
     var target = overviewTarget();
     var startPos = camera.position.clone();
     var startTarget = controls.target.clone();
-    var az = 0, el = 0.06;
+    var az = 0, el = 0.015;
     var dir = new THREE.Vector3(
       Math.sin(az) * Math.cos(el),
       Math.sin(el),
@@ -908,7 +909,7 @@
     init: function (el) {
       container = el;
       scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(40, el.clientWidth / el.clientHeight, 0.1, 100);
+      camera = new THREE.PerspectiveCamera(CAM_FOV, el.clientWidth / el.clientHeight, 0.1, 100);
       camera.position.set(0, 1.7, 8);
 
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
