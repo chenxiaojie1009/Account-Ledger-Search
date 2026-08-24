@@ -10,7 +10,7 @@ from typing import Optional, List
 
 from fastapi import FastAPI, Depends, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,12 @@ MAX_BOXES_PER_SHELF = 40
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 app = FastAPI(title='台账查找后端', version='1.1')
+
+
+@app.get('/', include_in_schema=False)
+def root():
+    # 根地址自动跳到后台管理网页，避免误以为 10600 没有页面
+    return RedirectResponse('/admin')
 
 app.add_middleware(
     CORSMiddleware,
