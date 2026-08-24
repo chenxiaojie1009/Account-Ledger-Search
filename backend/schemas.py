@@ -48,6 +48,17 @@ class RestoreIn(BaseModel):
     filename: Optional[str] = ''
 
 
+class ImportRowIn(BaseModel):
+    cabinet: int
+    layer: int
+    slot: int
+    name: str
+
+
+class ImportIn(BaseModel):
+    rows: List[ImportRowIn]
+
+
 class UserCreateIn(BaseModel):
     username: str
     displayName: Optional[str] = ''

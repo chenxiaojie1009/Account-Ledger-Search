@@ -358,6 +358,37 @@ async function handleApi(req, res, url) {
     return sendJSON(res, 200, { ok: true, cabinets: getCatalog() });
   }
 
+  if (resource === 'import' && method === 'POST') {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    const authUser = getUserByToken(token);
+    if (!authUser) return sendError(res, 401, '未登录');
+    if (!roleAllowed(authUser.role, 'editor')) return sendError(res, 403, '权限不足');
+    const body = JSON.parse(await readBody(req) || '{}');
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    let imported = 0;
+    const errors = [];
+    rows.forEach(function (row, idx) {
+      const cabinet = Number(row.cabinet);
+      const layer = Number(row.layer);
+      const slot = Number(row.slot);
+      const name = String(row.name == null ? '' : row.name).trim();
+      const lineNo = idx + 1;
+      if (!(cabinet >= 1 && cabinet <= CABINET_COUNT)) { errors.push('第' + lineNo + '行：柜号应为1-' + CABINET_COUNT); return; }
+      if (!(layer >= 1 && layer <= SHELF_COUNT)) { errors.push('第' + lineNo + '行：层号应为1-' + SHELF_COUNT); return; }
+      if (!(slot >= 1 && slot <= MAX_BOXES_PER_SHELF)) { errors.push('第' + lineNo + '行：序号应为1-' + MAX_BOXES_PER_SHELF); return; }
+      if (!name) { errors.push('第' + lineNo + '行：台账名称为空'); return; }
+      const ci = cabinet - 1;
+      const si = SHELF_COUNT - layer; // 层号1=第1层(最上) -> si=2
+      const bi = slot - 1;
+      const cur = shelfCount(ci, si);
+      if (cur < slot) setShelfCount(ci, si, Math.min(MAX_BOXES_PER_SHELF, slot));
+      renameBox(ci, si, bi, name);
+      imported++;
+    });
+    return sendJSON(res, 200, { ok: true, imported: imported, failed: errors.length, errors: errors, cabinets: getCatalog() });
+  }
+
   if (resource === 'reset' && method === 'POST') {
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;

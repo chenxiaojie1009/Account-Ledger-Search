@@ -22,7 +22,7 @@ from backend.database import engine, SessionLocal, Base, WWW_DIR, ADMIN_WEB_DIR,
 from backend.models import User, Cabinet, Box, File
 from backend.auth import hash_password, verify_password, create_token, token_user_id, role_allowed
 from backend.schemas import (
-    LoginIn, SetCountIn, RenameIn, UploadIn, RestoreIn,
+    LoginIn, SetCountIn, RenameIn, UploadIn, RestoreIn, ImportIn,
     UserCreateIn, UserUpdateIn,
 )
 
@@ -355,6 +355,42 @@ def reset(token: str = Depends(get_token), db: Session = Depends(get_db)):
         return err(403, '权限不足')
     reset_catalog(db)
     return {'ok': True, 'cabinets': get_catalog(db)}
+
+
+# ---------------- 文档名称批量导入 ----------------
+@app.post('/api/import')
+def import_names(body: ImportIn, token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    if not role_allowed(user.role, 'editor'):
+        return err(403, '权限不足')
+    imported = 0
+    errors = []
+    for idx, r in enumerate(body.rows):
+        line = idx + 1
+        cabinet, layer, slot, name = r.cabinet, r.layer, r.slot, (r.name or '').strip()
+        if not (1 <= cabinet <= CABINET_COUNT):
+            errors.append(f'第{line}行：柜号应为1-{CABINET_COUNT}')
+            continue
+        if not (1 <= layer <= SHELF_COUNT):
+            errors.append(f'第{line}行：层号应为1-{SHELF_COUNT}')
+            continue
+        if not (1 <= slot <= MAX_BOXES_PER_SHELF):
+            errors.append(f'第{line}行：序号应为1-{MAX_BOXES_PER_SHELF}')
+            continue
+        if not name:
+            errors.append(f'第{line}行：台账名称为空')
+            continue
+        ci = cabinet - 1
+        si = SHELF_COUNT - layer  # 层号1=最上层 -> si=2
+        bi = slot - 1
+        cur = db.query(Box).filter_by(cabinet_id=ci, shelf=si).count()
+        if cur < slot:
+            set_shelf_count(db, ci, si, min(MAX_BOXES_PER_SHELF, slot))
+        rename_box(db, ci, si, bi, name)
+        imported += 1
+    return {'ok': True, 'imported': imported, 'failed': len(errors), 'errors': errors, 'cabinets': get_catalog(db)}
 
 
 # ---------------- 文件 ----------------

@@ -129,6 +129,12 @@
     setCatalog(r.cabinets);
   }
 
+  async function importRows(rows) {
+    var r = await request('POST', '/api/import', { rows: rows });
+    setCatalog(r.cabinets);
+    return { imported: r.imported, failed: r.failed, errors: r.errors || [] };
+  }
+
   function find(query) {
     var q = String(query || '').trim().toLowerCase();
     var results = [];
@@ -216,6 +222,7 @@
     setShelfCount: setShelfCount,
     renameBox: renameBox,
     resetAll: resetAll,
+    importRows: importRows,
     find: find,
     listFiles: listFiles,
     uploadFile: uploadFile,
