@@ -101,6 +101,12 @@ function assert(cond, msg) {
   assert(admin.tabs.indexOf('dir') >= 0 && admin.tabs.indexOf('files') >= 0 && admin.tabs.indexOf('users') >= 0, 'admin tabs dir/files/users');
   assert(admin.boxInputs > 0, 'admin can edit box names');
   assert(admin.usersVisible, 'admin sees users tab');
+  const backupTabVisible = await page.evaluate(() => { const b = document.getElementById('backupTab'); return !!b && getComputedStyle(b).display !== 'none'; });
+  assert(backupTabVisible, 'admin sees backup tab');
+  await page.evaluate(() => { const b = document.querySelector('#backupTab'); if (b) b.click(); });
+  await sleep(400);
+  const backupUI = await page.evaluate(() => !!document.getElementById('backupDownBtn') && !!document.getElementById('backupUpBtn'));
+  assert(backupUI, 'backup download/restore buttons present');
   await page.screenshot({ path: OUT + '/03-admin-web.png' });
 
   // 改一个名称并验证

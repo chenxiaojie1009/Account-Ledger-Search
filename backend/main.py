@@ -2,15 +2,19 @@
 import os
 import sys
 import io
+import json
+import time
 import base64
 import uuid
+import zipfile
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 from typing import Optional, List
 
 from fastapi import FastAPI, Depends, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -18,7 +22,7 @@ from backend.database import engine, SessionLocal, Base, WWW_DIR, ADMIN_WEB_DIR,
 from backend.models import User, Cabinet, Box, File
 from backend.auth import hash_password, verify_password, create_token, token_user_id, role_allowed
 from backend.schemas import (
-    LoginIn, SetCountIn, RenameIn, UploadIn,
+    LoginIn, SetCountIn, RenameIn, UploadIn, RestoreIn,
     UserCreateIn, UserUpdateIn,
 )
 
@@ -155,6 +159,118 @@ def reset_catalog(db: Session):
         for s in range(SHELF_COUNT):
             for b in range(DEFAULT_BOXES_PER_SHELF):
                 db.add(Box(cabinet_id=c, shelf=s, slot=b, name='备用'))
+    db.commit()
+
+
+def build_backup(db: Session):
+    """把台账目录 + 已上传文件 + 用户打包成一个 zip（字节流）"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+        manifest = {
+            'version': 1,
+            'createdAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'cabinets': get_catalog(db),
+            'files': [],
+            'users': [],
+        }
+        for f in db.query(File).order_by(File.id).all():
+            p = UPLOAD_DIR / f.stored_name
+            if not p.exists():
+                continue
+            stored_name = f'files/{f.id}__{f.original_name}'
+            try:
+                z.write(p, stored_name)
+            except Exception:
+                continue
+            manifest['files'].append({
+                'id': f.id,
+                'cabinetId': f.box_cabinet_id,
+                'shelf': f.box_shelf,
+                'slot': f.box_slot,
+                'originalName': f.original_name,
+                'storedName': stored_name,
+                'mime': f.mime,
+                'size': f.size,
+            })
+        for u in db.query(User).order_by(User.id).all():
+            manifest['users'].append({
+                'id': u.id,
+                'username': u.username,
+                'passwordHash': u.password_hash,
+                'displayName': u.display_name or u.username,
+                'role': u.role,
+            })
+        z.writestr('catalog.json', json.dumps(manifest, ensure_ascii=False, indent=2))
+    return buf.getvalue()
+
+
+def restore_from_backup(db: Session, zf: zipfile.ZipFile, manifest: dict):
+    """按备份内容还原：目录、文件、用户"""
+    # 1) 清空当前台账与文件
+    for f in db.query(File).all():
+        unlink_file(f)
+        db.delete(f)
+    for b in db.query(Box).all():
+        db.delete(b)
+    db.flush()
+
+    # 2) 还原目录
+    cabinets = manifest.get('cabinets') or []
+    for ci in range(CABINET_COUNT):
+        src = cabinets[ci] if ci < len(cabinets) else None
+        if not src:
+            continue
+        shelves = src.get('shelves') or []
+        for si in range(SHELF_COUNT):
+            names = shelves[si] if si < len(shelves) else []
+            n = max(1, min(MAX_BOXES_PER_SHELF, len(names)))
+            for bi in range(n):
+                ensure_box(db, ci, si, bi)
+                row = db.query(Box).filter_by(cabinet_id=ci, shelf=si, slot=bi).first()
+                row.name = (names[bi] if bi < len(names) else '备用') or '备用'
+    db.flush()
+
+    # 3) 还原文件
+    for fm in (manifest.get('files') or []):
+        try:
+            content = zf.read(fm['storedName'])
+        except KeyError:
+            continue
+        ext = Path(fm.get('originalName', '')).suffix or '.bin'
+        stored = f'{int(time.time() * 1000)}-{uuid.uuid4().hex[:12]}{ext}'
+        (UPLOAD_DIR / stored).write_bytes(content)
+        db.add(File(
+            box_cabinet_id=fm['cabinetId'],
+            box_shelf=fm['shelf'],
+            box_slot=fm['slot'],
+            original_name=fm.get('originalName', 'file'),
+            stored_name=stored,
+            mime=fm.get('mime', 'application/octet-stream'),
+            size=len(content),
+            uploaded_by=None,
+        ))
+    db.flush()
+
+    # 4) 还原用户（尽量保持原 id，避免登录态失效）
+    users = manifest.get('users') or []
+    if users:
+        db.query(User).delete(synchronize_session=False)
+        for u in users:
+            uid = u.get('id')
+            db.add(User(
+                id=uid if isinstance(uid, int) else None,
+                username=u['username'],
+                password_hash=u.get('passwordHash') or hash_password('123456'),
+                display_name=u.get('displayName') or u['username'],
+                role=u.get('role', 'viewer'),
+            ))
+        db.flush()  # 先落库，让下面的查询能看到还原的用户
+
+    # 保证至少有一个管理员账号
+    if not db.query(User).filter_by(role='admin').first():
+        if not db.query(User).filter_by(username='admin').first():
+            db.add(User(username='admin', password_hash=hash_password('123456'),
+                        display_name='系统管理员', role='admin'))
     db.commit()
 
 
@@ -319,6 +435,46 @@ def delete_file(file_id: int, token: str = Depends(get_token), db: Session = Dep
     db.delete(f)
     db.commit()
     return {'ok': True}
+
+
+# ---------------- 备份 / 还原 ----------------
+@app.get('/api/backup')
+def download_backup(token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    if not role_allowed(user.role, 'admin'):
+        return err(403, '权限不足')
+    buf = build_backup(db)
+    name = 'taizhang-backup-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.zip'
+    return Response(
+        content=buf,
+        media_type='application/zip',
+        headers={
+            'Content-Disposition': "attachment; filename*=UTF-8''" + quote(name),
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+        },
+    )
+
+
+@app.post('/api/backup/restore')
+def restore_backup(body: RestoreIn, token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    if not role_allowed(user.role, 'admin'):
+        return err(403, '权限不足')
+    try:
+        data = base64.b64decode(body.dataBase64)
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        manifest = json.loads(zf.read('catalog.json').decode('utf-8'))
+        if not isinstance(manifest.get('cabinets'), list):
+            raise ValueError('备份文件缺少目录数据')
+    except Exception as e:
+        return err(400, '备份文件无效：' + str(e))
+    restore_from_backup(db, zf, manifest)
+    return {'ok': True, 'cabinets': get_catalog(db)}
 
 
 # ---------------- 用户 ----------------

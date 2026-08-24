@@ -43,6 +43,11 @@ class UploadIn(BaseModel):
     dataBase64: str
 
 
+class RestoreIn(BaseModel):
+    dataBase64: str
+    filename: Optional[str] = ''
+
+
 class UserCreateIn(BaseModel):
     username: str
     displayName: Optional[str] = ''

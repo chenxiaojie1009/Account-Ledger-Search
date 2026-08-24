@@ -59,6 +59,10 @@
   th { background: #f8fafd; color: #666; font-weight: 600; }
   .role-sel { width: 110px; height: 32px; }
   .del-user { height: 30px; background: #fdeeef; color: #e5484d; border-radius: 15px; padding: 0 12px; }
+  .backup-panel { background: #fff; border: 1px solid #e3e8f0; border-radius: 14px; padding: 18px; }
+  .backup-panel h3 { font-size: 16px; margin-bottom: 8px; }
+  .backup-panel .sub { color: #888; font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+  .backup-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   #toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(30,40,60,.9); color: #fff; padding: 10px 20px; border-radius: 20px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 99; }
   #toast.show { opacity: 1; }
   .empty { color: #999; font-size: 13px; padding: 20px 0; text-align: center; }
@@ -91,6 +95,7 @@
     <button class="tab active" data-tab="dir">目录管理</button>
     <button class="tab" data-tab="files">文件管理</button>
     <button class="tab" data-tab="users" id="usersTab" style="display:none">用户管理</button>
+    <button class="tab" data-tab="backup" id="backupTab" style="display:none">备份</button>
   </nav>
   <main>
     <section id="tab-dir">
@@ -122,6 +127,18 @@
         <thead><tr><th>用户</th><th>角色</th><th>操作</th></tr></thead>
         <tbody id="userBody"></tbody>
       </table>
+    </section>
+    <section id="tab-backup" style="display:none">
+      <div class="backup-panel">
+        <h3>台账备份 / 还原</h3>
+        <p class="sub">备份会打包：台账目录、已上传文件、用户账号。还原后按备份内容直接覆盖当前数据。</p>
+        <div class="backup-actions">
+          <button id="backupDownBtn" class="primary" style="width:auto;margin:0">下载备份（zip）</button>
+          <button id="backupUpBtn" class="ghost">选择备份文件还原</button>
+          <input id="backupFile" type="file" accept=".zip" style="display:none">
+        </div>
+        <div class="err" id="backupMsg"></div>
+      </div>
     </section>
   </main>
 </div>
@@ -177,6 +194,7 @@
     $('#app').style.display = 'block';
     $('#curUser').textContent = (me.displayName || me.username) + '（' + roleName(me.role) + '）';
     $('#usersTab').style.display = me.role === 'admin' ? '' : 'none';
+    $('#backupTab').style.display = me.role === 'admin' ? '' : 'none';
     $('#resetBtn').style.display = me.role === 'admin' ? '' : 'none';
     renderDir();
   }
@@ -419,6 +437,7 @@
       $('#tab-dir').style.display = curTab === 'dir' ? '' : 'none';
       $('#tab-files').style.display = curTab === 'files' ? '' : 'none';
       $('#tab-users').style.display = curTab === 'users' ? '' : 'none';
+      $('#tab-backup').style.display = curTab === 'backup' ? '' : 'none';
       if (curTab === 'files') renderFileFilters();
       if (curTab === 'users') renderUsers();
     });
@@ -437,6 +456,54 @@
     this.value = '';
   });
   $('#nuAdd').addEventListener('click', addUser);
+
+  /* ---------- 备份 / 还原 ---------- */
+  function downloadBackup() {
+    fetch('/api/backup', { headers: { 'Authorization': 'Bearer ' + token } }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.blob();
+    }).then(function (blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'taizhang-backup.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+      toast('备份已下载');
+    }).catch(function (e) { toast('备份失败：' + e.message); });
+  }
+  function restoreBackup(file) {
+    var msg = $('#backupMsg');
+    msg.textContent = '';
+    var reader = new FileReader();
+    reader.onload = function () {
+      var base64 = String(reader.result).split(',')[1] || '';
+      var btn = $('#backupUpBtn');
+      btn.disabled = true;
+      api('POST', '/api/backup/restore', { dataBase64: base64, filename: file.name }).then(function (r) {
+        catalog = r.cabinets;
+        toast('还原成功');
+        renderDir();
+        if (curTab === 'files') renderFileFilters();
+        api('GET', '/api/me').then(function () { btn.disabled = false; }).catch(function () {
+          saveToken(''); showLogin();
+        });
+      }).catch(function (e) {
+        msg.textContent = e.message || '还原失败';
+        btn.disabled = false;
+        toast('还原失败');
+      });
+    };
+    reader.onerror = function () { toast('读取文件失败'); };
+    reader.readAsDataURL(file);
+  }
+  $('#backupDownBtn').addEventListener('click', downloadBackup);
+  $('#backupUpBtn').addEventListener('click', function () { $('#backupFile').click(); });
+  $('#backupFile').addEventListener('change', function () {
+    if (this.files && this.files[0]) restoreBackup(this.files[0]);
+    this.value = '';
+  });
 
   /* ---------- 启动 ---------- */
   if (token) {
