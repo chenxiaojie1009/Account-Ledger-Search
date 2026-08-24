@@ -34,7 +34,7 @@ CABINET_DOORS = ['double', 'double', 'single', 'double', 'double', 'single']
 DEFAULT_BOXES_PER_SHELF = 15
 MAX_BOXES_PER_SHELF = 40
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-DEFAULT_SHELF_COLORS = ['#E3C878', '#E8EDF3', '#6FA0D6']
+DEFAULT_SHELF_COLORS = ['#E5484D', '#FF8A3D', '#F5C93C']
 
 app = FastAPI(title='台账查找后端', version='1.1')
 
@@ -181,44 +181,57 @@ def cabinet_count(db: Session):
 
 
 def apply_config(db: Session, new_cabs: list):
-    """按后台配置同步柜子数量与门型（单开/对开），保留索引对应的目录数据。"""
+    """按后台配置同步柜子数量与门型（单开/对开）。
+
+    采用“内存重建”方式：先把旧柜数据（名称、门型、颜色、每层台账名）读入内存，
+    再重建 Cabinet 与 Box，保证数量/门型变化后数据不会错乱。
+    """
     n = len(new_cabs)
     old = db.query(Cabinet).order_by(Cabinet.sort).all()
     old_count = len(old)
-    # 删除多余的柜（及其台账、文件）
+    # 1) 旧柜数据读入内存
+    old_data = {}
+    for i, cab in enumerate(old):
+        shelves = []
+        for s in range(SHELF_COUNT):
+            rows = db.query(Box).filter_by(cabinet_id=cab.id, shelf=s).order_by(Box.slot).all()
+            shelves.append([r.name for r in rows])
+        old_data[i] = {
+            'name': cab.name,
+            'doorType': cab.door_type,
+            'shelfColors': cab.shelf_colors,
+            'shelves': shelves,
+        }
+    # 2) 删除多余柜的文件，再清空柜体与台账
     for i in range(n, old_count):
-        old_id = old[i].id
-        for f in db.query(File).filter_by(box_cabinet_id=old_id).all():
+        for f in db.query(File).filter_by(box_cabinet_id=i).all():
             unlink_file(f)
             db.delete(f)
-        db.query(Box).filter_by(cabinet_id=old_id).delete(synchronize_session=False)
-        db.query(Cabinet).filter_by(id=old_id).delete(synchronize_session=False)
-    # 更新/新增柜
+    db.query(Box).delete(synchronize_session=False)
+    db.query(Cabinet).delete(synchronize_session=False)
+    db.flush()
+    # 3) 按新配置重建
     for i in range(n):
-        name = (new_cabs[i].get('name') or '').strip() or f'{i + 1}号柜'
-        door = 'single' if new_cabs[i].get('doorType') == 'single' else 'double'
-        colors = new_cabs[i].get('shelfColors') or None
-        colors_json = None
+        src = new_cabs[i]
+        name = (src.get('name') or '').strip() or f'{i + 1}号柜'
+        door = 'single' if src.get('doorType') == 'single' else 'double'
+        colors = src.get('shelfColors') or None
         if colors and isinstance(colors, list):
             valid = [str(c) for c in colors[:SHELF_COUNT]]
             while len(valid) < SHELF_COUNT:
                 valid.append(DEFAULT_SHELF_COLORS[len(valid)])
             colors_json = json.dumps(valid)
-        if i < old_count:
-            cab = old[i]
-            cab.name = name
-            cab.door_type = door
-            cab.sort = i
-            if colors_json:
-                cab.shelf_colors = colors_json
-            if cab.id != i:
-                db.query(Box).filter_by(cabinet_id=cab.id).update({'cabinet_id': i})
-                db.query(File).filter_by(box_cabinet_id=cab.id).update({'box_cabinet_id': i})
-                cab.id = i
         else:
-            db.add(Cabinet(id=i, name=name, door_type=door, sort=i,
-                           shelf_colors=colors_json or json.dumps(DEFAULT_SHELF_COLORS)))
-            for s in range(SHELF_COUNT):
+            colors_json = json.dumps(DEFAULT_SHELF_COLORS)
+        db.add(Cabinet(id=i, name=name, door_type=door, sort=i, shelf_colors=colors_json))
+        old = old_data.get(i)
+        for s in range(SHELF_COUNT):
+            if old and s < len(old['shelves']) and old['shelves'][s]:
+                for b, nm in enumerate(old['shelves'][s]):
+                    if b >= MAX_BOXES_PER_SHELF:
+                        break
+                    db.add(Box(cabinet_id=i, shelf=s, slot=b, name=(nm or '备用')))
+            else:
                 for b in range(DEFAULT_BOXES_PER_SHELF):
                     db.add(Box(cabinet_id=i, shelf=s, slot=b, name='备用'))
     db.commit()

@@ -14,8 +14,8 @@
   var FRONT_Z = CAB_D / 2;                 // 柜前面
   var BACK_Z = -FRONT_Z + 0.02;
 
-  /* 每层台账（档案盒）颜色：后台可自定义，默认色 */
-  var DEFAULT_COLORS = ['#E3C878', '#E8EDF3', '#6FA0D6'];
+  /* 每层台账（档案盒）颜色：后台可自定义（红橙黄绿青蓝紫灰粉黑白棕），默认色 */
+  var DEFAULT_COLORS = ['#E5484D', '#FF8A3D', '#F5C93C'];
   function boxColor(ci, si) {
     var cab = Store.data.cabinets[ci];
     var arr = (cab && cab.shelfColors && cab.shelfColors.length) ? cab.shelfColors : DEFAULT_COLORS;
@@ -37,7 +37,7 @@
     var cab = Store.data.cabinets[ci];
     return (cabDoorWidth(cab) - SIDE_T * 2) - 0.03;
   }
-  var cabPositions = [];      // 每柜中心 x
+  var cabPositions = [];      // 每柜中心 x（已居中到 0）
   var rowHalf = 2.0;          // 整排柜子半宽
   function computeLayout() {
     cabPositions = [];
@@ -48,6 +48,25 @@
       x += w + CAB_GAP;
     });
     rowHalf = Math.max(1.5, (x - CAB_GAP) / 2);
+    // 先按柜子边缘居中
+    for (var i = 0; i < cabPositions.length; i++) cabPositions[i] -= rowHalf;
+    // 再按“所有台账盒子”的实际左右边缘求内容中心，整体平移，保证视觉完全居中
+    var left = Infinity, right = -Infinity;
+    Store.data.cabinets.forEach(function (c, ci) {
+      var uw = shelfUsableWidth(ci);
+      c.shelves.forEach(function (shelf, si) {
+        var n = shelf.length;
+        if (!n) return;
+        var w = uw / n;
+        var x0 = cabPositions[ci] - uw / 2 + w * 0.5;
+        var x1 = cabPositions[ci] - uw / 2 + w * (n - 0.5);
+        if (x0 < left) left = x0;
+        if (x1 > right) right = x1;
+      });
+    });
+    var center = (left + right) / 2;
+    for (var j = 0; j < cabPositions.length; j++) cabPositions[j] -= center;
+    rowHalf -= center;
   }
 
   /* ---------------- 基础 ---------------- */
@@ -683,7 +702,7 @@
     var aspect = camera ? camera.aspect : 16 / 10;
     var vHalf = Math.tan(THREE.MathUtils.degToRad(40) / 2);
     var hHalf = vHalf * aspect;
-    var az = 0.04, el = 0.06;
+    var az = 0, el = 0.06;
     var ca = Math.cos(az), ce = Math.cos(el);
     var c = ca * ce, s = Math.sin(az) * ce;
     var margin = 0.4;
@@ -704,7 +723,7 @@
     var target = overviewTarget();
     var startPos = camera.position.clone();
     var startTarget = controls.target.clone();
-    var az = 0.04, el = 0.06;
+    var az = 0, el = 0.06;
     var dir = new THREE.Vector3(
       Math.sin(az) * Math.cos(el),
       Math.sin(el),

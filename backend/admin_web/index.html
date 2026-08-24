@@ -77,8 +77,11 @@
   .config-row input { flex: 1; height: 36px; }
   .config-row select { width: 130px; height: 36px; }
   .config-row.colors { gap: 14px; padding-left: 70px; }
-  .color-lab { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #666; }
+  .color-lab { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666; }
   .color-lab input[type="color"] { width: 42px; height: 30px; padding: 1px; border: 1px solid #d9e0ea; border-radius: 6px; cursor: pointer; }
+  .swatches { display: flex; gap: 4px; flex-wrap: wrap; }
+  .swatch { width: 18px; height: 18px; border-radius: 5px; cursor: pointer; border: 2px solid transparent; display: inline-block; }
+  .swatch.on { border-color: #1f4aa8; box-shadow: 0 0 0 2px rgba(91,141,239,.35); }
   .config-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 </style>
 </head>
@@ -695,11 +698,12 @@
     $('#cfgCount').value = catalog.length;
     buildConfigRows();
   }
+  var COLOR_PALETTE = ['#E5484D', '#FF8A3D', '#F5C93C', '#37B26B', '#2BB3C4', '#3B82F6', '#8B5CF6', '#9CA3AF', '#F472B6', '#374151', '#F3F4F6', '#B45309'];
   function buildConfigRows() {
     var n = Number($('#cfgCount').value) || (catalog ? catalog.length : 0);
     var rows = $('#cfgRows');
     var html = '';
-    var defColors = ['#E3C878', '#E8EDF3', '#6FA0D6'];
+    var defColors = ['#E5484D', '#FF8A3D', '#F5C93C'];
     for (var i = 0; i < n; i++) {
       var c = catalog[i];
       var name = c ? c.name : ((i + 1) + '号柜');
@@ -708,8 +712,13 @@
       var colorLabels = ['第1层', '第2层', '第3层'];
       var colorHtml = '';
       for (var L = 0; L < 3; L++) {
+        var cur = (colors[L] || defColors[L]).toLowerCase();
+        var swatches = COLOR_PALETTE.map(function (hex) {
+          return '<span class="swatch' + (hex.toLowerCase() === cur ? ' on' : '') + '" style="background:' + hex + '" data-color="' + hex + '" title="' + esc(hex) + '"></span>';
+        }).join('');
         colorHtml += '<label class="color-lab">' + colorLabels[L] +
-          '<input type="color" data-layer="' + L + '" value="' + esc(colors[L] || defColors[L]) + '"></label>';
+          '<input type="color" data-layer="' + L + '" value="' + esc(colors[L] || defColors[L]) + '">' +
+          '<span class="swatches">' + swatches + '</span></label>';
       }
       html += '<div class="config-unit" data-ci="' + i + '">' +
         '<div class="config-row">' +
@@ -724,6 +733,16 @@
     }
     rows.innerHTML = html;
   }
+  // 12 色快捷色板点击选择
+  $('#cfgRows').addEventListener('click', function (e) {
+    var sw = e.target.closest('.swatch');
+    if (!sw) return;
+    var lab = sw.closest('.color-lab');
+    if (!lab) return;
+    var input = lab.querySelector('input[data-layer]');
+    if (input) input.value = sw.dataset.color;
+    lab.querySelectorAll('.swatch').forEach(function (x) { x.classList.toggle('on', x === sw); });
+  });
   $('#cfgCountBtn').addEventListener('click', function () {
     var n = Number($('#cfgCount').value);
     if (!(n >= 1 && n <= 20)) { $('#cfgMsg').textContent = '数量应为 1-20'; return; }
