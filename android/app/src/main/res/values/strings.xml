@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">台账查找</string>
+    <string name="title_activity_main">台账查找</string>
+    <string name="package_name">com.taizhang.sim</string>
+    <string name="custom_url_scheme">com.taizhang.sim</string>
+</resources>

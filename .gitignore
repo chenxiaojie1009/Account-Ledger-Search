@@ -1,0 +1,25 @@
+# 依赖与构建
+node_modules/
+dist/
+backend/build/
+backend/dist/
+backend/__pycache__/
+*.pyc
+.cache/
+
+# 运行时数据（数据库 / 上传文件 / 日志）
+data/
+*.log
+
+# 打包产物
+deploy/*.exe
+
+# QA 截图
+qa/*.png
+
+# Android 构建输出与本地配置
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/.idea/

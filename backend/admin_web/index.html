@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235b8def'/%3E%3Crect x='12' y='18' width='14' height='30' rx='2' fill='%23fff' opacity='.92'/%3E%3Crect x='32' y='18' width='14' height='30' rx='2' fill='%23fff' opacity='.92'/%3E%3C/svg%3E">
+<title>台账后台管理</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f2f5f9; color: #333; }
+  .screen { min-height: 100vh; }
+  .card { width: min(420px, calc(100vw - 32px)); margin: 10vh auto; background: #fff; border-radius: 16px; padding: 28px; box-shadow: 0 10px 40px rgba(30,60,120,.12); }
+  .card h2 { font-size: 20px; margin-bottom: 6px; }
+  .card .sub { color: #888; font-size: 13px; margin-bottom: 18px; }
+  label { display: block; font-size: 13px; color: #666; margin: 14px 0 6px; }
+  input, select { width: 100%; height: 40px; border: 1px solid #d9e0ea; border-radius: 10px; padding: 0 12px; font-size: 14px; outline: none; }
+  input:focus, select:focus { border-color: #5b8def; }
+  button { height: 40px; padding: 0 18px; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; }
+  button.primary { background: #5b8def; color: #fff; width: 100%; margin-top: 18px; }
+  button.ghost { background: #eef1f6; color: #555; }
+  .err { color: #e5484d; font-size: 13px; min-height: 18px; margin-top: 8px; }
+  header { background: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 10px rgba(30,60,120,.08); }
+  header h1 { font-size: 18px; flex: 1; }
+  header .user { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #555; }
+  nav { display: flex; gap: 8px; padding: 14px 20px 0; }
+  nav .tab { background: #e4eaf3; color: #555; }
+  nav .tab.active { background: #5b8def; color: #fff; }
+  main { padding: 16px 20px 40px; }
+  .cabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .cabs button { background: #fff; border: 1.5px solid #d9e0ea; flex: 1; min-width: 90px; height: 46px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  .cabs button.active { border-color: #5b8def; background: #eaf1fd; color: #1f4aa8; }
+  .cabs small { font-size: 11px; color: #999; }
+  .shelf { background: #fff; border: 1px solid #e3e8f0; border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+  .shelf-head { display: flex; align-items: center; gap: 10px; }
+  .shelf-head b { font-size: 15px; }
+  .shelf-head .count { color: #888; font-size: 13px; flex: 1; }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper button { width: 32px; height: 32px; padding: 0; border-radius: 50%; background: #fff; border: 1px solid #d9e0ea; font-size: 18px; }
+  .boxes { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+  .box-row { display: flex; gap: 6px; }
+  .box-row input { height: 34px; font-size: 13px; }
+  .box-row button { width: 52px; height: 34px; padding: 0; background: #eaf1fd; color: #1f4aa8; font-size: 13px; }
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; background: #fff; border: 1px solid #e3e8f0; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+  .filters label { margin: 0; width: 110px; font-size: 12px; color: #666; }
+  .filters select { height: 34px; }
+  .boxname { font-size: 13px; color: #1f4aa8; padding-bottom: 8px; }
+  .file-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #e3e8f0; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .file-row .fi { flex: 1; min-width: 0; }
+  .file-row .fn { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-row .fm { font-size: 12px; color: #999; }
+  .file-row a, .file-row button { height: 30px; padding: 0 12px; border-radius: 15px; text-decoration: none; font-size: 12.5px; display: inline-flex; align-items: center; }
+  .file-row a { background: #eaf1fd; color: #1f4aa8; }
+  .file-row button.del { background: #fdeeef; color: #e5484d; border: none; cursor: pointer; }
+  .upload { margin-top: 14px; }
+  .add-user { display: flex; gap: 8px; flex-wrap: wrap; background: #fff; border: 1px solid #e3e8f0; border-radius: 12px; padding: 12px; margin-bottom: 14px; }
+  .add-user input, .add-user select { width: 150px; height: 36px; }
+  table { width: 100%; background: #fff; border-collapse: collapse; border-radius: 12px; overflow: hidden; }
+  th, td { border-bottom: 1px solid #eef1f6; padding: 10px 12px; text-align: left; font-size: 14px; }
+  th { background: #f8fafd; color: #666; font-weight: 600; }
+  .role-sel { width: 110px; height: 32px; }
+  .del-user { height: 30px; background: #fdeeef; color: #e5484d; border-radius: 15px; padding: 0 12px; }
+  #toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(30,40,60,.9); color: #fff; padding: 10px 20px; border-radius: 20px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 99; }
+  #toast.show { opacity: 1; }
+  .empty { color: #999; font-size: 13px; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div id="login" class="screen">
+  <div class="card">
+    <h2>台账后台管理</h2>
+    <p class="sub">登录后可管理台账目录、上传文件与用户权限</p>
+    <label>用户名</label>
+    <input id="u" value="admin">
+    <label>密码</label>
+    <input id="p" type="password">
+    <div class="err" id="loginErr"></div>
+    <button id="loginBtn" class="primary">登 录</button>
+  </div>
+</div>
+
+<div id="app" class="screen" style="display:none">
+  <header>
+    <h1>台账后台管理</h1>
+    <div class="user">
+      <span id="curUser"></span>
+      <button id="resetBtn" class="ghost" style="display:none">恢复默认</button>
+      <button id="logoutBtn" class="ghost">退出</button>
+    </div>
+  </header>
+  <nav>
+    <button class="tab active" data-tab="dir">目录管理</button>
+    <button class="tab" data-tab="files">文件管理</button>
+    <button class="tab" data-tab="users" id="usersTab" style="display:none">用户管理</button>
+  </nav>
+  <main>
+    <section id="tab-dir">
+      <div id="cabTabs" class="cabs"></div>
+      <div id="shelves"></div>
+    </section>
+    <section id="tab-files" style="display:none">
+      <div class="filters">
+        <label>柜 <select id="fCab"></select></label>
+        <label>层 <select id="fShelf"></select></label>
+        <label>序号 <select id="fSlot"></select></label>
+        <span class="boxname" id="fName"></span>
+      </div>
+      <div id="fileList"></div>
+      <div class="upload">
+        <button id="upBtn" class="primary">上传文件</button>
+        <input id="upInput" type="file" multiple style="display:none">
+      </div>
+    </section>
+    <section id="tab-users" style="display:none">
+      <div class="add-user">
+        <input id="nuName" placeholder="用户名">
+        <input id="nuDisplay" placeholder="显示名">
+        <input id="nuPass" placeholder="密码（默认123456）">
+        <select id="nuRole"><option value="viewer">只读</option><option value="editor">编辑</option><option value="admin">管理员</option></select>
+        <button id="nuAdd" class="primary" style="width:auto;margin:0">添加用户</button>
+      </div>
+      <table>
+        <thead><tr><th>用户</th><th>角色</th><th>操作</th></tr></thead>
+        <tbody id="userBody"></tbody>
+      </table>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var TOKEN_KEY = 'taizhang_admin_token';
+  var token = localStorage.getItem(TOKEN_KEY) || '';
+  var me = null, catalog = null, curCab = 0, curTab = 'dir';
+  var $ = function (s) { return document.querySelector(s); };
+
+  function toast(msg) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._t);
+    t._t = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fmt(n) {
+    if (n == null) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+  function api(method, path, body) {
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    return fetch(path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined }).then(function (res) {
+      return res.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+        if (!res.ok) { var err = new Error(data.error || ('HTTP ' + res.status)); err.status = res.status; throw err; }
+        return data;
+      });
+    });
+  }
+  function saveToken(t) { token = t || ''; if (token) localStorage.setItem(TOKEN_KEY, token); else localStorage.removeItem(TOKEN_KEY); }
+
+  function showLogin() {
+    $('#app').style.display = 'none';
+    $('#login').style.display = 'block';
+    setTimeout(function () { var u = $('#u'); if (u) u.focus(); }, 60);
+  }
+  function showApp() {
+    $('#login').style.display = 'none';
+    $('#app').style.display = 'block';
+    $('#curUser').textContent = (me.displayName || me.username) + '（' + roleName(me.role) + '）';
+    $('#usersTab').style.display = me.role === 'admin' ? '' : 'none';
+    $('#resetBtn').style.display = me.role === 'admin' ? '' : 'none';
+    renderDir();
+  }
+  function roleName(r) { return { viewer: '只读', editor: '编辑', admin: '管理员' }[r] || r; }
+
+  function login() {
+    var btn = $('#loginBtn');
+    btn.disabled = true; btn.textContent = '登录中…';
+    api('POST', '/api/login', { username: $('#u').value.trim(), password: $('#p').value }).then(function (r) {
+      saveToken(r.token);
+      me = r.user;
+      showApp();
+      toast('登录成功');
+    }).catch(function (e) {
+      $('#loginErr').textContent = e.message || '登录失败';
+      btn.disabled = false; btn.textContent = '登 录';
+    });
+  }
+
+  function logout() {
+    api('POST', '/api/logout').catch(function () {});
+    saveToken('');
+    me = null; catalog = null;
+    showLogin();
+    toast('已退出');
+  }
+
+  /* ---------- 目录管理 ---------- */
+  function renderDir() {
+    api('GET', '/api/catalog').then(function (r) {
+      catalog = r.cabinets;
+      renderCabTabs();
+      renderShelves();
+    }).catch(function (e) { toast('加载目录失败：' + e.message); });
+  }
+  function renderCabTabs() {
+    var html = '';
+    catalog.forEach(function (c, i) {
+      var door = c.doorType === 'double' ? '对开' : '单开';
+      html += '<button class="' + (i === curCab ? 'active' : '') + '" data-ci="' + i + '" type="button"><span>' + esc(c.name) + '</span><small>' + door + '</small></button>';
+    });
+    $('#cabTabs').innerHTML = html;
+    $('#cabTabs').querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () { curCab = Number(b.dataset.ci); renderCabTabs(); renderShelves(); });
+    });
+  }
+  function renderShelves() {
+    var cab = catalog[curCab];
+    if (!cab) return;
+    var html = '';
+    for (var d = 0; d < 3; d++) {
+      var si = 2 - d;
+      var shelf = cab.shelves[si];
+      var count = shelf.length;
+      html += '<div class="shelf"><div class="shelf-head"><b>第 ' + (d + 1) + ' 层</b>' +
+        '<span class="count">共 ' + count + ' 个台账（最多 40）</span>' +
+        '<div class="stepper">' +
+        '<button data-act="dec" data-si="' + si + '"' + (count <= 1 ? ' disabled' : '') + '>−</button>' +
+        '<span>' + count + '</span>' +
+        '<button data-act="inc" data-si="' + si + '"' + (count >= 40 ? ' disabled' : '') + '>+</button>' +
+        '</div></div><div class="boxes">';
+      shelf.forEach(function (name, bi) {
+        html += '<div class="box-row"><input class="box-name" data-si="' + si + '" data-bi="' + bi + '" maxlength="40" value="' + esc(name) + '">' +
+          '<button class="box-save" data-si="' + si + '" data-bi="' + bi + '">保存</button></div>';
+      });
+      html += '</div></div>';
+    }
+    $('#shelves').innerHTML = html;
+    $('#shelves').querySelectorAll('.stepper button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var si = Number(b.dataset.si);
+        var delta = b.dataset.act === 'inc' ? 1 : -1;
+        var n = catalog[curCab].shelves[si].length + delta;
+        api('POST', '/api/set-count', { cabinetId: curCab, shelf: si, count: n }).then(function (r) {
+          catalog = r.cabinets;
+          renderDir();
+          toast('已调整数量');
+        }).catch(function (e) { toast('保存失败：' + e.message); });
+      });
+    });
+    $('#shelves').querySelectorAll('.box-save').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var si = Number(b.dataset.si), bi = Number(b.dataset.bi);
+        var name = b.previousElementSibling.value.trim() || '备用';
+        api('POST', '/api/rename', { cabinetId: curCab, shelf: si, slot: bi, name: name }).then(function (r) {
+          catalog = r.cabinets;
+          renderDir();
+          toast('名称已保存');
+        }).catch(function (e) { toast('保存失败：' + e.message); });
+      });
+    });
+  }
+
+  /* ---------- 文件管理 ---------- */
+  function renderFileFilters() {
+    if (!catalog) return;
+    var cabSel = $('#fCab'), shelfSel = $('#fShelf'), slotSel = $('#fSlot');
+    cabSel.innerHTML = '';
+    catalog.forEach(function (c, i) {
+      cabSel.innerHTML += '<option value="' + i + '">' + esc(c.name) + '</option>';
+    });
+    fillShelfOptions();
+  }
+  function fillShelfOptions() {
+    var s = $('#fShelf');
+    var prev = Number(s.value || 0);
+    s.innerHTML = '<option value="0">第1层</option><option value="1">第2层</option><option value="2">第3层</option>';
+    if (prev >= 0 && prev <= 2) s.value = prev;
+    fillSlotOptions();
+  }
+  function fillSlotOptions() {
+    var slotSel = $('#fSlot');
+    var ci = Number($('#fCab').value), si = Number($('#fShelf').value);
+    var count = catalog[ci].shelves[si].length;
+    var prev = Number(slotSel.value || 1);
+    slotSel.innerHTML = '';
+    for (var i = 1; i <= count; i++) {
+      slotSel.innerHTML += '<option value="' + (i - 1) + '">第' + i + '个</option>';
+    }
+    if (prev >= 0 && prev < count) slotSel.value = prev;
+    else slotSel.value = 0;
+    var name = catalog[ci].shelves[si][Number(slotSel.value)];
+    $('#fName').textContent = name || '';
+    loadFiles();
+  }
+  function currentBox() {
+    return { cabinetId: Number($('#fCab').value), shelf: Number($('#fShelf').value), slot: Number($('#fSlot').value) };
+  }
+  function loadFiles() {
+    var b = currentBox();
+    api('GET', '/api/files?cabinetId=' + b.cabinetId + '&shelf=' + b.shelf + '&slot=' + b.slot).then(function (r) {
+      var files = r.files || [];
+      var list = $('#fileList');
+      if (!files.length) { list.innerHTML = '<div class="empty">暂无文件，点击下方「上传文件」</div>'; return; }
+      list.innerHTML = files.map(function (f) {
+        return '<div class="file-row"><div class="fi"><div class="fn">' + esc(f.originalName) + '</div>' +
+          '<div class="fm">' + fmt(f.size) + ' · ' + esc(f.mime || '') + '</div></div>' +
+          '<a href="' + esc(f.url) + '" target="_blank" rel="noopener">查看</a>' +
+          '<a href="' + esc(f.url) + '" download="' + esc(f.originalName) + '">下载</a>' +
+          '<button class="del" data-id="' + f.id + '">删除</button></div>';
+      }).join('');
+      list.querySelectorAll('.del').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (!confirm('确定删除该文件？')) return;
+          api('DELETE', '/api/files/' + btn.dataset.id).then(function () {
+            toast('已删除');
+            loadFiles();
+          }).catch(function (e) { toast('删除失败：' + e.message); });
+        });
+      });
+    }).catch(function (e) { toast('加载文件失败：' + e.message); });
+  }
+  function uploadFiles(files) {
+    var b = currentBox();
+    var idx = 0;
+    function next() {
+      if (idx >= files.length) { loadFiles(); return; }
+      var file = files[idx++];
+      var reader = new FileReader();
+      reader.onload = function () {
+        var base64 = String(reader.result).split(',')[1] || '';
+        api('POST', '/api/files', {
+          cabinetId: b.cabinetId, shelf: b.shelf, slot: b.slot,
+          filename: file.name, mime: file.type || 'application/octet-stream', dataBase64: base64
+        }).then(function () {
+          toast('已上传 ' + file.name);
+          next();
+        }).catch(function (e) {
+          toast('上传失败：' + file.name + ' ' + e.message);
+          next();
+        });
+      };
+      reader.onerror = function () { toast('读取文件失败'); next(); };
+      reader.readAsDataURL(file);
+    }
+    next();
+  }
+
+  /* ---------- 用户管理 ---------- */
+  function renderUsers() {
+    api('GET', '/api/users').then(function (r) {
+      var body = $('#userBody');
+      body.innerHTML = (r.users || []).map(function (u) {
+        return '<tr><td><b>' + esc(u.displayName) + '</b><br><small>@' + esc(u.username) + '</small></td>' +
+          '<td><select class="role-sel" data-id="' + u.id + '">' +
+          '<option value="viewer"' + (u.role === 'viewer' ? ' selected' : '') + '>只读</option>' +
+          '<option value="editor"' + (u.role === 'editor' ? ' selected' : '') + '>编辑</option>' +
+          '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') + '>管理员</option>' +
+          '</select></td>' +
+          '<td><button class="del-user" data-id="' + u.id + '">删除</button></td></tr>';
+      }).join('');
+      body.querySelectorAll('.role-sel').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+          api('PUT', '/api/users/' + sel.dataset.id, { role: sel.value }).then(function () {
+            toast('角色已更新');
+          }).catch(function (e) { toast('更新失败：' + e.message); });
+        });
+      });
+      body.querySelectorAll('.del-user').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (!confirm('确定删除该用户？')) return;
+          api('DELETE', '/api/users/' + btn.dataset.id).then(function () {
+            toast('已删除');
+            renderUsers();
+          }).catch(function (e) { toast('删除失败：' + e.message); });
+        });
+      });
+    }).catch(function (e) { toast('加载用户失败：' + e.message); });
+  }
+  function addUser() {
+    var username = $('#nuName').value.trim();
+    if (!username) { toast('请填写用户名'); return; }
+    api('POST', '/api/users', {
+      username: username,
+      displayName: $('#nuDisplay').value.trim() || username,
+      password: $('#nuPass').value || '123456',
+      role: $('#nuRole').value
+    }).then(function () {
+      toast('已添加用户');
+      $('#nuName').value = ''; $('#nuDisplay').value = ''; $('#nuPass').value = '';
+      renderUsers();
+    }).catch(function (e) { toast('添加失败：' + e.message); });
+  }
+
+  /* ---------- 绑定事件 ---------- */
+  $('#loginBtn').addEventListener('click', login);
+  $('#p').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
+  $('#logoutBtn').addEventListener('click', logout);
+  $('#resetBtn').addEventListener('click', function () {
+    if (!confirm('恢复默认将清空全部名称、数量与文件，确定？')) return;
+    api('POST', '/api/reset').then(function () {
+      toast('已恢复默认');
+      renderDir();
+    }).catch(function (e) { toast('恢复失败：' + e.message); });
+  });
+  document.querySelectorAll('nav .tab').forEach(function (b) {
+    b.addEventListener('click', function () {
+      curTab = b.dataset.tab;
+      document.querySelectorAll('nav .tab').forEach(function (x) { x.classList.toggle('active', x === b); });
+      $('#tab-dir').style.display = curTab === 'dir' ? '' : 'none';
+      $('#tab-files').style.display = curTab === 'files' ? '' : 'none';
+      $('#tab-users').style.display = curTab === 'users' ? '' : 'none';
+      if (curTab === 'files') renderFileFilters();
+      if (curTab === 'users') renderUsers();
+    });
+  });
+  $('#fCab').addEventListener('change', fillShelfOptions);
+  $('#fShelf').addEventListener('change', fillSlotOptions);
+  $('#fSlot').addEventListener('change', function () {
+    var b = currentBox();
+    var name = catalog[b.cabinetId].shelves[b.shelf][b.slot];
+    $('#fName').textContent = name || '';
+    loadFiles();
+  });
+  $('#upBtn').addEventListener('click', function () { $('#upInput').click(); });
+  $('#upInput').addEventListener('change', function () {
+    if (this.files && this.files.length) uploadFiles(Array.prototype.slice.call(this.files));
+    this.value = '';
+  });
+  $('#nuAdd').addEventListener('click', addUser);
+
+  /* ---------- 启动 ---------- */
+  if (token) {
+    api('GET', '/api/me').then(function (r) {
+      me = r.user;
+      showApp();
+    }).catch(function () {
+      saveToken('');
+      showLogin();
+    });
+  } else {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>

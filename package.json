@@ -1,0 +1,22 @@
+{
+  "name": "taizhang-sim",
+  "version": "1.0.0",
+  "description": "台账位置查找仿真系统",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "start:web": "http-server www -p 10500 -c-1",
+    "qa": "node tools/qa.js",
+    "cap:sync": "cap sync android",
+    "build:apk": "cd android && gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.2.0",
+    "@capacitor/core": "6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.2.0",
+    "http-server": "14.1.1",
+    "puppeteer-core": "23.11.1"
+  }
+}
