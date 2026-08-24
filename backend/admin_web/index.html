@@ -354,22 +354,24 @@
   }
   function fillShelfOptions() {
     var s = $('#fShelf');
-    var prev = Number(s.value || 0);
-    s.innerHTML = '<option value="0">第1层</option><option value="1">第2层</option><option value="2">第3层</option>';
-    if (prev >= 0 && prev <= 2) s.value = prev;
+    var v = s.value;
+    // 层号与目录管理/三维场景保持一致：si=2=第1层(最上层)，si=0=第3层(最下层)
+    if (!(v === '0' || v === '1' || v === '2')) v = '2'; // 默认第1层
+    s.innerHTML = '<option value="2">第1层</option><option value="1">第2层</option><option value="0">第3层</option>';
+    s.value = v;
     fillSlotOptions();
   }
   function fillSlotOptions() {
     var slotSel = $('#fSlot');
     var ci = Number($('#fCab').value), si = Number($('#fShelf').value);
     var count = catalog[ci].shelves[si].length;
-    var prev = Number(slotSel.value || 1);
+    var prev = Number(slotSel.value);
+    if (!(prev >= 0 && prev < count)) prev = 0; // 默认第1个
     slotSel.innerHTML = '';
     for (var i = 1; i <= count; i++) {
       slotSel.innerHTML += '<option value="' + (i - 1) + '">第' + i + '个</option>';
     }
-    if (prev >= 0 && prev < count) slotSel.value = prev;
-    else slotSel.value = 0;
+    slotSel.value = prev;
     var name = catalog[ci].shelves[si][Number(slotSel.value)];
     $('#fName').textContent = name || '';
     loadFiles();
