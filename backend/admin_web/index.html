@@ -72,9 +72,13 @@
   code { background: #eef1f6; padding: 1px 5px; border-radius: 5px; }
   .primary-ghost { background: #5b8def; color: #fff; }
   .config-panel { background: #fff; border: 1px solid #e3e8f0; border-radius: 14px; padding: 18px; }
-  .config-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .config-unit { margin-bottom: 14px; border-bottom: 1px dashed #eef1f6; padding-bottom: 10px; }
+  .config-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
   .config-row input { flex: 1; height: 36px; }
   .config-row select { width: 130px; height: 36px; }
+  .config-row.colors { gap: 14px; padding-left: 70px; }
+  .color-lab { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #666; }
+  .color-lab input[type="color"] { width: 42px; height: 30px; padding: 1px; border: 1px solid #d9e0ea; border-radius: 6px; cursor: pointer; }
   .config-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 </style>
 </head>
@@ -695,17 +699,28 @@
     var n = Number($('#cfgCount').value) || (catalog ? catalog.length : 0);
     var rows = $('#cfgRows');
     var html = '';
+    var defColors = ['#E3C878', '#E8EDF3', '#6FA0D6'];
     for (var i = 0; i < n; i++) {
       var c = catalog[i];
       var name = c ? c.name : ((i + 1) + '号柜');
       var door = c ? c.doorType : 'double';
-      html += '<div class="config-row">' +
+      var colors = (c && c.shelfColors) ? c.shelfColors : defColors;
+      var colorLabels = ['第1层', '第2层', '第3层'];
+      var colorHtml = '';
+      for (var L = 0; L < 3; L++) {
+        colorHtml += '<label class="color-lab">' + colorLabels[L] +
+          '<input type="color" data-layer="' + L + '" value="' + esc(colors[L] || defColors[L]) + '"></label>';
+      }
+      html += '<div class="config-unit" data-ci="' + i + '">' +
+        '<div class="config-row">' +
         '<span style="width:70px;font-size:13px;color:#888">' + (i + 1) + '号柜</span>' +
-        '<input data-ci="' + i + '" data-field="name" value="' + esc(name) + '" placeholder="柜子名称">' +
-        '<select data-ci="' + i + '" data-field="door">' +
+        '<input data-field="name" value="' + esc(name) + '" placeholder="柜子名称">' +
+        '<select data-field="door">' +
         '<option value="double"' + (door === 'double' ? ' selected' : '') + '>对开</option>' +
         '<option value="single"' + (door === 'single' ? ' selected' : '') + '>单开</option>' +
-        '</select></div>';
+        '</select></div>' +
+        '<div class="config-row colors">' + colorHtml + '</div>' +
+        '</div>';
     }
     rows.innerHTML = html;
   }
@@ -720,8 +735,9 @@
     var n = Number($('#cfgCount').value) || (catalog ? catalog.length : 0);
     if (!(n >= 1 && n <= 20)) { $('#cfgMsg').textContent = '数量应为 1-20'; return; }
     var cabs = [];
-    document.querySelectorAll('#cfgRows .config-row').forEach(function (row) {
-      cabs.push({ name: row.querySelector('[data-field="name"]').value.trim(), doorType: row.querySelector('[data-field="door"]').value });
+    document.querySelectorAll('#cfgRows .config-unit').forEach(function (unit) {
+      var colors = Array.prototype.slice.call(unit.querySelectorAll('input[data-layer]')).map(function (inp) { return inp.value; });
+      cabs.push({ name: unit.querySelector('[data-field="name"]').value.trim(), doorType: unit.querySelector('[data-field="door"]').value, shelfColors: colors });
     });
     var btn = $('#cfgSave'); btn.disabled = true;
     api('POST', '/api/config', { cabinets: cabs }).then(function (r) {

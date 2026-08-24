@@ -67,6 +67,7 @@ class UpdateCatalogIn(BaseModel):
 class ConfigCabinetIn(BaseModel):
     doorType: str
     name: Optional[str] = ''
+    shelfColors: Optional[List[str]] = None
 
 
 class ConfigIn(BaseModel):

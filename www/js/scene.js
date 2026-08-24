@@ -4,24 +4,50 @@
 
   /* ---------------- 尺寸常量 ---------------- */
   var CAB_W = 1.7, CAB_H = 2.6, CAB_D = 0.55;
-  var CAB_PITCH = 1.86;                    // 柜间距
+  var CAB_GAP = 0.06;                      // 柜子之间缝隙（小一点）
   var CAB_TOP = 2.6;
   var SIDE_T = 0.045;                      // 侧板厚
-  var INNER_W = CAB_W - SIDE_T * 2;        // 内宽 1.61
-  var USE_W = INNER_W - 0.03;              // 可用摆盒宽度
+  var INNER_W = CAB_W - SIDE_T * 2;        // 双开柜内宽
   var BOX_D = 0.36, BOX_H = 0.50;
   var BAY_TOPS = [0.13, 0.87, 1.61];       // 每层搁板上表面
   var BOX_CENTERS = BAY_TOPS.map(function (t) { return t + BOX_H / 2; });
   var FRONT_Z = CAB_D / 2;                 // 柜前面
   var BACK_Z = -FRONT_Z + 0.02;
 
-  /* 六个柜子不同的台账（档案盒）颜色，模拟照片中彩色档案盒 */
-  var BINDER = [0xE3C878, 0xE8EDF3, 0x6FA0D6, 0xA9CE9B, 0xD89B9B, 0xD6C08F];
-  function boxColor(ci) { return BINDER[ci % BINDER.length]; }
+  /* 每层台账（档案盒）颜色：后台可自定义，默认色 */
+  var DEFAULT_COLORS = ['#E3C878', '#E8EDF3', '#6FA0D6'];
+  function boxColor(ci, si) {
+    var cab = Store.data.cabinets[ci];
+    var arr = (cab && cab.shelfColors && cab.shelfColors.length) ? cab.shelfColors : DEFAULT_COLORS;
+    var hex = String(arr[si] || DEFAULT_COLORS[si % DEFAULT_COLORS.length]).replace('#', '');
+    return parseInt(hex, 16);
+  }
   var binderTexCache = {};
-  function binderTexture(ci) {
-    if (!binderTexCache[ci]) binderTexCache[ci] = makeBinderTexture(boxColor(ci));
-    return binderTexCache[ci];
+  function binderTexture(ci, si) {
+    var key = ci + '-' + si;
+    if (!binderTexCache[key]) binderTexCache[key] = makeBinderTexture(boxColor(ci, si));
+    return binderTexCache[key];
+  }
+
+  /* 单开柜宽度为双开柜的一半，高度不变 */
+  function cabDoorWidth(cab) {
+    return (cab && cab.doorType === 'single') ? CAB_W * 0.5 : CAB_W;
+  }
+  function shelfUsableWidth(ci) {
+    var cab = Store.data.cabinets[ci];
+    return (cabDoorWidth(cab) - SIDE_T * 2) - 0.03;
+  }
+  var cabPositions = [];      // 每柜中心 x
+  var rowHalf = 2.0;          // 整排柜子半宽
+  function computeLayout() {
+    cabPositions = [];
+    var x = 0;
+    Store.data.cabinets.forEach(function (c) {
+      var w = cabDoorWidth(c);
+      cabPositions.push(x + w / 2);
+      x += w + CAB_GAP;
+    });
+    rowHalf = Math.max(1.5, (x - CAB_GAP) / 2);
   }
 
   /* ---------------- 基础 ---------------- */
@@ -40,7 +66,7 @@
   var onHoverCb = null, onClickCb = null, onFrameCb = null;
 
   function cabinetCount() { return (Store.data.cabinets && Store.data.cabinets.length) || 6; }
-  function cabinetHalf() { var n = cabinetCount(); return ((n - 1) * CAB_PITCH) / 2 + CAB_W / 2; }
+  function cabinetHalf() { return rowHalf; }
 
   /* ---------------- 缓动 ---------------- */
   function easeInOutCubic(t) { return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
@@ -292,10 +318,12 @@
     scene.add(group);
     cabinetGroups.push(group);
 
-    var hw = CAB_W / 2, hh = CAB_H / 2;
+    var w = cabDoorWidth(cab);            // 单开柜宽度为双开柜一半，高度不变
+    var innerW = w - SIDE_T * 2;
+    var hw = w / 2, hh = CAB_H / 2;
     var sx = hw - SIDE_T / 2;
-    function addBox(w, h, d, mat, x, y, z, radius) {
-      var m = roundedBox(w, h, d, mat, radius);
+    function addBox(bw, h, d, mat, x, y, z, radius) {
+      var m = roundedBox(bw, h, d, mat, radius);
       m.position.set(x, y, z);
       group.add(m);
       return m;
@@ -307,22 +335,22 @@
 
     // 背板
     var backH = 2.31 - 0.09;
-    addBox(INNER_W, backH, 0.02, matBack, 0, 0.09 + backH / 2, BACK_Z, 0.006);
+    addBox(innerW, backH, 0.02, matBack, 0, 0.09 + backH / 2, BACK_Z, 0.006);
 
     // 底座
-    addBox(INNER_W - 0.02, 0.09, CAB_D - 0.06, matPlinth, 0, 0.045, 0, 0.008);
+    addBox(innerW - 0.02, 0.09, CAB_D - 0.06, matPlinth, 0, 0.045, 0, 0.008);
 
     // 搁板（3层）
     [0.11, 0.85, 1.59].forEach(function (y) {
-      addBox(CAB_W, 0.04, CAB_D, matBoard, 0, y, 0, 0.008);
+      addBox(w, 0.04, CAB_D, matBoard, 0, y, 0, 0.008);
     });
 
     // 顶板与冠线
-    addBox(CAB_W, 0.16, CAB_D + 0.02, matBody, 0, 2.31 + 0.08, 0.01, 0.02);
-    addBox(CAB_W + 0.05, 0.13, CAB_D + 0.04, matBoard, 0, 2.6 - 0.065, 0.012, 0.02);
+    addBox(w, 0.16, CAB_D + 0.02, matBody, 0, 2.31 + 0.08, 0.01, 0.02);
+    addBox(w + 0.05, 0.13, CAB_D + 0.04, matBoard, 0, 2.6 - 0.065, 0.012, 0.02);
 
     // 玻璃柜门 + 门框（对开/单开）
-    addGlassFront(group, cab.doorType);
+    addGlassFront(group, cab.doorType, innerW);
 
     // 柜号牌
     var plaque = new THREE.Mesh(
@@ -334,11 +362,10 @@
     return group;
   }
 
-  function addGlassFront(group, doorType) {
+  function addGlassFront(group, doorType, glassW) {
     var z = FRONT_Z + 0.02;
     var yb = 0.14, yt = 2.29;
     var glassH = yt - yb;
-    var glassW = INNER_W;
     // 玻璃
     var glass = roundedBox(glassW, glassH, 0.015, matGlass, 0.005);
     glass.position.set(0, (yb + yt) / 2, z);
@@ -375,19 +402,20 @@
 
   /* ---------------- 档案盒 ---------------- */
   function boxDims(ci, si, count) {
-    var w = USE_W / count;
+    var w = shelfUsableWidth(ci) / count;
     return { w: w, h: BOX_H, d: BOX_D };
   }
 
-  function boxCenterX(ci, count) {
-    var n = cabinetCount();
-    return ((ci - (n - 1) / 2) * CAB_PITCH) - USE_W / 2;
+  function boxCenterX(ci, bi, count) {
+    var uw = shelfUsableWidth(ci);
+    var w = uw / count;
+    return cabPositions[ci] - uw / 2 + w * (bi + 0.5);
   }
 
   function createBoxMesh(key, ci, si, bi, name, count) {
     var dims = boxDims(ci, si, count);
     var mat = new THREE.MeshPhongMaterial({
-      map: binderTexture(ci),
+      map: binderTexture(ci, si),
       shininess: 10,
       specular: 0x151515,
       transparent: true, opacity: 1
@@ -400,10 +428,10 @@
     group.add(mesh);
     group.add(boxLabelMesh({ dims: dims, name: name }));
 
-    var x = boxCenterX(ci, count) + dims.w * (bi + 0.5);
+    var x = boxCenterX(ci, bi, count);
     var rec = {
       key: key, ci: ci, si: si, bi: bi, name: name,
-      group: group, mesh: mesh, mat: mat, color: boxColor(ci),
+      group: group, mesh: mesh, mat: mat, color: boxColor(ci, si),
       basePos: new THREE.Vector3(x, BOX_CENTERS[si], FRONT_Z - dims.d / 2),
       dims: dims
     };
@@ -432,9 +460,9 @@
     rec.name = Store.data.cabinets[rec.ci].shelves[rec.si][rec.bi];
     var dims = boxDims(rec.ci, rec.si, Store.data.cabinets[rec.ci].shelves[rec.si].length);
     rec.dims = dims;
-    var n = cabinetCount();
+    var cnt = Store.data.cabinets[rec.ci].shelves[rec.si].length;
     rec.basePos = new THREE.Vector3(
-      ((rec.ci - (n - 1) / 2) * CAB_PITCH) - USE_W / 2 + dims.w * (rec.bi + 0.5),
+      boxCenterX(rec.ci, rec.bi, cnt),
       BOX_CENTERS[rec.si], FRONT_Z - dims.d / 2
     );
 
@@ -664,7 +692,7 @@
     var dVT = (CAB_TOP - ty + 0.15) / Math.max(ce * vHalf - Math.sin(el), 0.05);
     var dVB = (ty + 0.1) / (ce * vHalf + Math.sin(el));
     var dist = Math.max(dH, dVT, dVB);
-    return Math.min(Math.max(dist, 4.2), 20);
+    return Math.min(Math.max(dist, 4.2), 60);
   }
 
   function overviewTarget() {
@@ -760,7 +788,7 @@
 
   /* ---------------- 交互 ---------------- */
   var downPos = null, downKey = null, touchDismissTimer = null;
-  var HOVER_SCALE = 1.18;
+  var HOVER_SCALE = 1.22;
 
   function setHovered(key) {
     if (key === hoverKey) return;
@@ -772,12 +800,12 @@
     if (!rec) return;
     var startScale = rec.group.scale.x;
     var startPos = rec.group.position.clone();
-    var endPos = rec.basePos.clone().add(new THREE.Vector3(0, 0.04, 0.06));
+    var endPos = rec.basePos.clone().add(new THREE.Vector3(0, 0.045, 0.10));
     addTween(0.22, easeOutCubic, function (k) {
       rec.group.scale.setScalar(startScale + (HOVER_SCALE - startScale) * k);
       rec.group.position.lerpVectors(startPos, endPos, k);
     });
-    if (dimKey !== key) rec.mat.emissive.setRGB(0.17, 0.17, 0.17);
+    if (dimKey !== key) rec.mat.emissive.setRGB(0.26, 0.26, 0.26);
   }
 
   function clearHovered() {
@@ -837,11 +865,10 @@
 
   /* ---------------- 对外接口 ---------------- */
   function buildCabinets() {
+    computeLayout();
     clearCabinets();
     Store.data.cabinets.forEach(function (c, ci) {
-      var n = cabinetCount();
-      var cx = (ci - (n - 1) / 2) * CAB_PITCH;
-      buildCabinet(cx, c);
+      buildCabinet(cabPositions[ci], c);
     });
     buildFloorShadowWidth();
   }
@@ -877,7 +904,7 @@
       controls.dampingFactor = 0.08;
       controls.enablePan = false;
       controls.minDistance = 1.5;
-      controls.maxDistance = 20;
+      controls.maxDistance = 60;
       controls.minPolarAngle = 0.25;
       controls.maxPolarAngle = Math.PI / 2 - 0.15;
       controls.minAzimuthAngle = -0.9;
@@ -961,7 +988,7 @@
       return rec ? { ci: rec.ci, si: rec.si, bi: rec.bi, name: rec.name } : null;
     },
     colorOf: function (ci) {
-      var c = boxColor(ci);
+      var c = boxColor(ci, 0);
       return '#' + ('00000' + c.toString(16)).slice(-6);
     },
     debug: function () {

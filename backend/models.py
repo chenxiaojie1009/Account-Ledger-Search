@@ -20,6 +20,8 @@ class Cabinet(Base):
     name = Column(String(64), nullable=False)
     door_type = Column(String(16), nullable=False, default='double')  # double / single
     sort = Column(Integer, nullable=False, default=0)
+    # 每层台账颜色（JSON 数组，如 ["#E3C878","#E8EDF3","#6FA0D6"]），可在后台自定义
+    shelf_colors = Column(Text, nullable=True)
 
 
 class Box(Base):

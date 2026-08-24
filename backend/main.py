@@ -16,6 +16,7 @@ from fastapi import FastAPI, Depends, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.database import engine, SessionLocal, Base, WWW_DIR, ADMIN_WEB_DIR, UPLOAD_DIR, DATA_DIR, get_db
@@ -33,6 +34,7 @@ CABINET_DOORS = ['double', 'double', 'single', 'double', 'double', 'single']
 DEFAULT_BOXES_PER_SHELF = 15
 MAX_BOXES_PER_SHELF = 40
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+DEFAULT_SHELF_COLORS = ['#E3C878', '#E8EDF3', '#6FA0D6']
 
 app = FastAPI(title='台账查找后端', version='1.1')
 
@@ -71,6 +73,13 @@ def seed():
 @app.on_event('startup')
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    # 旧数据库升级：补齐每层台账颜色列
+    try:
+        with engine.connect() as conn:
+            conn.execute(text('ALTER TABLE cabinets ADD COLUMN shelf_colors TEXT'))
+            conn.commit()
+    except Exception:
+        pass
     seed()
 
 
@@ -97,6 +106,17 @@ def require_user(token: str, db: Session):
     return user
 
 
+def shelf_colors_of(c: Cabinet):
+    if c.shelf_colors:
+        try:
+            colors = json.loads(c.shelf_colors)
+            if isinstance(colors, list) and len(colors) >= SHELF_COUNT:
+                return list(colors[:SHELF_COUNT])
+        except Exception:
+            pass
+    return list(DEFAULT_SHELF_COLORS)
+
+
 def get_catalog(db: Session):
     cabinets = db.query(Cabinet).order_by(Cabinet.sort).all()
     out = []
@@ -105,7 +125,13 @@ def get_catalog(db: Session):
         for s in range(SHELF_COUNT):
             rows = db.query(Box).filter_by(cabinet_id=c.id, shelf=s).order_by(Box.slot).all()
             shelves.append([r.name for r in rows])
-        out.append({'id': c.id, 'name': c.name, 'doorType': c.door_type, 'shelves': shelves})
+        out.append({
+            'id': c.id,
+            'name': c.name,
+            'doorType': c.door_type,
+            'shelfColors': shelf_colors_of(c),
+            'shelves': shelves,
+        })
     return out
 
 
@@ -171,17 +197,27 @@ def apply_config(db: Session, new_cabs: list):
     for i in range(n):
         name = (new_cabs[i].get('name') or '').strip() or f'{i + 1}号柜'
         door = 'single' if new_cabs[i].get('doorType') == 'single' else 'double'
+        colors = new_cabs[i].get('shelfColors') or None
+        colors_json = None
+        if colors and isinstance(colors, list):
+            valid = [str(c) for c in colors[:SHELF_COUNT]]
+            while len(valid) < SHELF_COUNT:
+                valid.append(DEFAULT_SHELF_COLORS[len(valid)])
+            colors_json = json.dumps(valid)
         if i < old_count:
             cab = old[i]
             cab.name = name
             cab.door_type = door
             cab.sort = i
+            if colors_json:
+                cab.shelf_colors = colors_json
             if cab.id != i:
                 db.query(Box).filter_by(cabinet_id=cab.id).update({'cabinet_id': i})
                 db.query(File).filter_by(box_cabinet_id=cab.id).update({'box_cabinet_id': i})
                 cab.id = i
         else:
-            db.add(Cabinet(id=i, name=name, door_type=door, sort=i))
+            db.add(Cabinet(id=i, name=name, door_type=door, sort=i,
+                           shelf_colors=colors_json or json.dumps(DEFAULT_SHELF_COLORS)))
             for s in range(SHELF_COUNT):
                 for b in range(DEFAULT_BOXES_PER_SHELF):
                     db.add(Box(cabinet_id=i, shelf=s, slot=b, name='备用'))
@@ -476,7 +512,9 @@ def save_config(body: ConfigIn, token: str = Depends(get_token), db: Session = D
     for c in cabs:
         if c.doorType not in ('double', 'single'):
             return err(400, '门型只能为 对开(double) 或 单开(single)')
-    apply_config(db, [{'name': c.name, 'doorType': c.doorType} for c in cabs])
+        if c.shelfColors is not None and (not isinstance(c.shelfColors, list) or len(c.shelfColors) != SHELF_COUNT):
+            return err(400, f'每层颜色应为 {SHELF_COUNT} 个')
+    apply_config(db, [{'name': c.name, 'doorType': c.doorType, 'shelfColors': c.shelfColors} for c in cabs])
     return {'ok': True, 'cabinets': get_catalog(db)}
 
 
