@@ -42,9 +42,15 @@
     var m = (f.mime || '').toLowerCase();
     if (m.indexOf('image/') === 0) return 'image';
     if (m === 'application/pdf') return 'pdf';
-    if (m.indexOf('text/') === 0 || m === 'application/json' || m.indexOf('xml') >= 0 || m === 'application/javascript') return 'text';
+    // 注意：不能用 indexOf('xml') 判断文本，否则 openxml（xlsx/docx/pptx）会被误判成文本
+    if (m.indexOf('text/') === 0 || m === 'application/json' || m === 'application/xml' || m === 'text/xml' || m === 'application/javascript') return 'text';
     var ext = (f.originalName || '').split('.').pop().toLowerCase();
-    if (['txt', 'md', 'json', 'csv', 'html', 'xml', 'log'].indexOf(ext) >= 0) return 'text';
+    if (['txt', 'md', 'json', 'csv', 'html', 'htm', 'xml', 'log'].indexOf(ext) >= 0) return 'text';
+    if (m.indexOf('spreadsheet') >= 0 || m === 'application/vnd.ms-excel' || ['xlsx', 'xls', 'xlsm', 'xlsb'].indexOf(ext) >= 0) return 'excel';
+    if (ext === 'docx' || m.indexOf('wordprocessingml') >= 0) return 'word';
+    if (ext === 'doc' || m === 'application/msword') return 'word-legacy';
+    if (['pptx', 'pptm'].indexOf(ext) >= 0 || m.indexOf('presentationml') >= 0) return 'ppt';
+    if (ext === 'ppt' || m === 'application/vnd.ms-powerpoint') return 'ppt-legacy';
     return 'other';
   }
 
@@ -210,8 +216,15 @@
       inner = '<iframe class="file-pdf" src="' + escapeHtml(url) + '"></iframe>';
     } else if (kind === 'text') {
       inner = '<div class="file-text" data-url="' + escapeHtml(url) + '"><span class="shelf-empty">加载中…</span></div>';
+    } else if (kind === 'excel') {
+      inner = '<div class="file-excel" data-url="' + escapeHtml(url) + '"><span class="shelf-empty">正在解析 Excel…</span></div>';
+    } else if (kind === 'word') {
+      inner = '<div class="file-word" data-url="' + escapeHtml(url) + '"><span class="shelf-empty">正在解析 Word…</span></div>';
+    } else if (kind === 'ppt') {
+      inner = '<div class="file-ppt" data-url="' + escapeHtml(url) + '"><span class="shelf-empty">正在解析 PPT…</span></div><div class="ppt-note">（PPT 在线预览仅显示每页文字内容）</div>';
     } else {
-      inner = '<div class="file-other"><a class="file-btn" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" download="' + escapeHtml(f.originalName) + '">下载查看</a></div>';
+      inner = '<div class="file-other"><p>该格式无法在线预览，请下载后用对应软件查看。</p>' +
+        '<a class="file-btn" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" download="' + escapeHtml(f.originalName) + '">下载查看</a></div>';
     }
     openModal(
       '<div class="modal" id="viewerModal">' +
@@ -228,8 +241,82 @@
         var box = $('.file-text'); if (box) box.innerHTML = '<span class="shelf-empty">无法读取文本内容</span>';
       });
     }
+    if (kind === 'excel') renderExcelPreview(url);
+    if (kind === 'word') renderWordPreview(url);
+    if (kind === 'ppt') renderPptPreview(url);
     $('#viewerClose').addEventListener('click', function () { openModal(''); showDetailModalFromCache(); });
     $('#viewerModal').addEventListener('click', function (e) { if (e.target === this) $('#viewerClose').click(); });
+  }
+
+  function renderExcelPreview(url) {
+    fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+      var box = $('.file-excel');
+      if (!box) return;
+      if (typeof XLSX === 'undefined') { box.innerHTML = '<span class="shelf-empty">缺少 Excel 解析组件</span>'; return; }
+      var wb;
+      try { wb = XLSX.read(new Uint8Array(buf), { type: 'array' }); }
+      catch (e) { box.innerHTML = '<span class="shelf-empty">Excel 解析失败：' + escapeHtml(e.message || e) + '</span>'; return; }
+      var html = '';
+      wb.SheetNames.slice(0, 5).forEach(function (name, idx) {
+        var ws = wb.Sheets[name];
+        if (!ws) return;
+        var rows = [];
+        try { rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }); } catch (e) { rows = []; }
+        html += '<div class="excel-sheet"><div class="excel-name">工作表' + (idx + 1) + '：' + escapeHtml(name) + '</div>' +
+          '<div class="excel-scroll"><table class="excel-table"><tbody>';
+        rows.slice(0, 500).forEach(function (row) {
+          html += '<tr>';
+          (row || []).forEach(function (cell) {
+            html += '<td>' + escapeHtml(String(cell == null ? '' : cell)) + '</td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+      });
+      box.innerHTML = html || '<span class="shelf-empty">Excel 中没有可显示的内容</span>';
+    }).catch(function () { var box = $('.file-excel'); if (box) box.innerHTML = '<span class="shelf-empty">Excel 文件读取失败</span>'; });
+  }
+
+  function renderWordPreview(url) {
+    fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+      var box = $('.file-word');
+      if (!box) return;
+      if (typeof mammoth === 'undefined') { box.innerHTML = '<span class="shelf-empty">缺少 Word 解析组件</span>'; return; }
+      mammoth.convertToHtml({ arrayBuffer: buf }).then(function (result) {
+        box.innerHTML = result.value || '<span class="shelf-empty">Word 文档为空</span>';
+      }).catch(function (e) { box.innerHTML = '<span class="shelf-empty">Word 解析失败：' + escapeHtml(e.message || e) + '</span>'; });
+    }).catch(function () { var box = $('.file-word'); if (box) box.innerHTML = '<span class="shelf-empty">Word 文件读取失败</span>'; });
+  }
+
+  function renderPptPreview(url) {
+    fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+      var box = $('.file-ppt');
+      if (!box) return;
+      if (typeof JSZip === 'undefined') { box.innerHTML = '<span class="shelf-empty">缺少 PPT 解析组件</span>'; return; }
+      return JSZip.loadAsync(buf).then(function (zip) {
+        var slideFiles = Object.keys(zip.files).filter(function (n) {
+          return /^ppt\/slides\/slide\d+\.xml$/.test(n);
+        }).sort(function (a, b) {
+          return parseInt(a.match(/slide(\d+)/)[1], 10) - parseInt(b.match(/slide(\d+)/)[1], 10);
+        });
+        if (!slideFiles.length) { box.innerHTML = '<span class="shelf-empty">PPT 中没有可预览的幻灯片</span>'; return; }
+        var chain = Promise.resolve();
+        var html = '';
+        var idx = 0;
+        slideFiles.forEach(function (name) {
+          chain = chain.then(function () {
+            return zip.file(name).async('string').then(function (xml) {
+              var doc = new DOMParser().parseFromString(xml, 'text/xml');
+              var texts = Array.prototype.map.call(doc.getElementsByTagName('a:t'), function (t) { return t.textContent; });
+              idx++;
+              html += '<div class="ppt-slide"><div class="ppt-title">第 ' + idx + ' 页</div>' +
+                '<div class="ppt-text">' + escapeHtml(texts.join(' ') || '（本页无文字）') + '</div></div>';
+            });
+          });
+        });
+        return chain.then(function () { box.innerHTML = html; });
+      }).catch(function (e) { box.innerHTML = '<span class="shelf-empty">PPT 解析失败：' + escapeHtml(e.message || e) + '</span>'; });
+    }).catch(function () { var box = $('.file-ppt'); if (box) box.innerHTML = '<span class="shelf-empty">PPT 文件读取失败</span>'; });
   }
 
   function showDetailModalFromCache() {
@@ -398,6 +485,7 @@
     doSearch: doSearch,
     showLogin: showLogin,
     afterLogin: afterLogin,
-    logout: logout
+    logout: logout,
+    openBoxDetail: openBoxDetail
   };
 })();

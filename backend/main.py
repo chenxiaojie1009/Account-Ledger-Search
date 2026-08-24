@@ -363,11 +363,13 @@ def restore_from_backup(db: Session, zf: zipfile.ZipFile, manifest: dict):
     db.commit()
 
 
-def file_url(f: File, token: str):
-    return f"/api/files/{f.id}/download?token={quote(token)}&name={quote(f.original_name)}"
+def file_url(f: File, token: str, request: Request):
+    # 生成绝对地址，保证 APK（跨端口/跨主机）也能直接访问
+    base = str(request.base_url).rstrip('/')
+    return f"{base}/api/files/{f.id}/download?token={quote(token)}&name={quote(f.original_name)}"
 
 
-def file_out(f: File, token: str):
+def file_out(f: File, token: str, request: Request):
     return {
         'id': f.id,
         'cabinetId': f.box_cabinet_id,
@@ -377,7 +379,7 @@ def file_out(f: File, token: str):
         'mime': f.mime,
         'size': f.size,
         'createdAt': f.created_at.strftime('%Y-%m-%d %H:%M:%S') if f.created_at else '',
-        'url': file_url(f, token),
+        'url': file_url(f, token, request),
     }
 
 
@@ -533,17 +535,17 @@ def save_config(body: ConfigIn, token: str = Depends(get_token), db: Session = D
 
 # ---------------- 文件 ----------------
 @app.get('/api/files')
-def list_files(cabinetId: int = Query(...), shelf: int = Query(...), slot: int = Query(...),
+def list_files(request: Request, cabinetId: int = Query(...), shelf: int = Query(...), slot: int = Query(...),
                token: str = Depends(get_token), db: Session = Depends(get_db)):
     user = require_user(token, db)
     if not user:
         return err(401, '未登录')
     rows = db.query(File).filter_by(box_cabinet_id=cabinetId, box_shelf=shelf, box_slot=slot).order_by(File.id).all()
-    return {'ok': True, 'files': [file_out(f, token) for f in rows]}
+    return {'ok': True, 'files': [file_out(f, token, request) for f in rows]}
 
 
 @app.post('/api/files')
-def upload_file(body: UploadIn, token: str = Depends(get_token), db: Session = Depends(get_db)):
+def upload_file(request: Request, body: UploadIn, token: str = Depends(get_token), db: Session = Depends(get_db)):
     user = require_user(token, db)
     if not user:
         return err(401, '未登录')
@@ -577,7 +579,7 @@ def upload_file(body: UploadIn, token: str = Depends(get_token), db: Session = D
     )
     db.add(f)
     db.commit()
-    return {'ok': True, 'file': file_out(f, token)}
+    return {'ok': True, 'file': file_out(f, token, request)}
 
 
 @app.get('/api/files/{file_id}/download')
