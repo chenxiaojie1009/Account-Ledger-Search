@@ -213,7 +213,11 @@
     if (kind === 'image') {
       inner = '<img class="file-img" src="' + escapeHtml(url) + '" alt="' + escapeHtml(f.originalName) + '">';
     } else if (kind === 'pdf') {
-      inner = '<iframe class="file-pdf" src="' + escapeHtml(url) + '"></iframe>';
+      inner = '<div class="pdf-viewer" data-id="' + f.id + '">' +
+        '<div class="pdf-nav"><button type="button" id="pdfPrev">上一页</button>' +
+        '<span id="pdfPage">加载中…</span>' +
+        '<button type="button" id="pdfNext">下一页</button></div>' +
+        '<img class="pdf-img" id="pdfImg" alt="' + escapeHtml(f.originalName) + '"></div>';
     } else if (kind === 'text') {
       inner = '<div class="file-text" data-url="' + escapeHtml(url) + '"><span class="shelf-empty">加载中…</span></div>';
     } else if (kind === 'excel') {
@@ -249,11 +253,38 @@
         var box = $('.file-text'); if (box) box.innerHTML = '<span class="shelf-empty">无法读取文本内容</span>';
       });
     }
+    if (kind === 'pdf') initPdfViewer(f);
     if (kind === 'excel') renderExcelPreview(url);
     if (kind === 'word') renderWordPreview(url);
     if (kind === 'ppt') renderPptPreview(url);
     $('#viewerClose').addEventListener('click', function () { openModal(''); showDetailModalFromCache(); });
     $('#viewerModal').addEventListener('click', function (e) { if (e.target === this) $('#viewerClose').click(); });
+  }
+
+  function initPdfViewer(f) {
+    var img = $('#pdfImg');
+    var pageLabel = $('#pdfPage');
+    var cur = 1, total = 1;
+    function previewUrl(p) {
+      return f.url.replace('/download', '/preview').replace(/[?&]name=[^&]*/, '') + '&page=' + p;
+    }
+    function load() {
+      img.src = previewUrl(cur);
+      pageLabel.textContent = '第 ' + cur + ' / ' + (total || '?') + ' 页';
+      var p = $('#pdfPrev'), n = $('#pdfNext');
+      if (p) p.disabled = cur <= 1;
+      if (n) n.disabled = total >= 1 && cur >= total;
+    }
+    // 获取总页数
+    fetch(f.url.replace('/download', '/pdf-info').replace(/[?&]name=[^&]*/, ''), { headers: { 'Authorization': 'Bearer ' + Store.token() } })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        total = (j && j.pageCount) || 1;
+        load();
+      }).catch(function () { total = 1; load(); });
+    var p = $('#pdfPrev'), n = $('#pdfNext');
+    if (p) p.addEventListener('click', function () { if (cur > 1) { cur--; load(); } });
+    if (n) n.addEventListener('click', function () { if (cur < total) { cur++; load(); } });
+    load();
   }
 
   function renderExcelPreview(url) {

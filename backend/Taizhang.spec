@@ -11,7 +11,7 @@ hiddenimports = (
     + collect_submodules('fastapi')
     + collect_submodules('sqlalchemy')
     + collect_submodules('bcrypt')
-    + ['jwt', 'email_validator']
+    + ['jwt', 'email_validator', 'fitz', 'pymupdf']
 )
 
 a = Analysis(

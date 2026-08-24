@@ -603,6 +603,60 @@ def download_file(file_id: int, token: str = Query(default=''), download: str = 
     return FileResponse(p, media_type=f.mime or 'application/octet-stream', headers=headers)
 
 
+@app.get('/api/files/{file_id}/preview')
+def preview_file(file_id: int, page: int = Query(default=1), token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    f = db.get(File, file_id)
+    if not f:
+        return err(404, '文件不存在')
+    p = UPLOAD_DIR / f.stored_name
+    if not p.exists():
+        return err(404, '文件不存在')
+    # 仅支持 PDF 转图片预览
+    if f.mime != 'application/pdf':
+        return err(400, '仅支持 PDF 在线预览')
+    try:
+        import fitz
+        doc = fitz.open(str(p))
+        if page < 1:
+            page = 1
+        if page > doc.page_count:
+            page = doc.page_count
+        pg = doc.load_page(page - 1)
+        pix = pg.get_pixmap(matrix=fitz.Matrix(1.6, 1.6))  # 放大一点保证清晰
+        data = pix.tobytes('png')
+        doc.close()
+        return Response(content=data, media_type='image/png',
+                        headers={'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store'})
+    except Exception as e:
+        return err(500, 'PDF 预览失败：' + str(e))
+
+
+@app.get('/api/files/{file_id}/pdf-info')
+def pdf_info(file_id: int, token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    f = db.get(File, file_id)
+    if not f:
+        return err(404, '文件不存在')
+    p = UPLOAD_DIR / f.stored_name
+    if not p.exists():
+        return err(404, '文件不存在')
+    if f.mime != 'application/pdf':
+        return err(400, '仅支持 PDF')
+    try:
+        import fitz
+        doc = fitz.open(str(p))
+        count = doc.page_count
+        doc.close()
+        return {'ok': True, 'pageCount': count}
+    except Exception as e:
+        return err(500, 'PDF 读取失败：' + str(e))
+
+
 @app.delete('/api/files/{file_id}')
 def delete_file(file_id: int, token: str = Depends(get_token), db: Session = Depends(get_db)):
     user = require_user(token, db)

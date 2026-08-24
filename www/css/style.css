@@ -422,8 +422,13 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 /* ---------- 文件查看 ---------- */
 .viewer-card { width: min(760px, calc(100vw - 40px)); }
 .viewer-body { margin-top: 16px; max-height: 62vh; overflow: auto; background: #f4f7fb; border-radius: 12px; padding: 10px; }
-.file-img { max-width: 100%; display: block; margin: 0 auto; }
+.file-img { max-width: 100%; max-height: 70vh; width: auto; height: auto; object-fit: contain; display: block; margin: 0 auto; }
 .file-pdf { width: 100%; height: 60vh; border: 0; border-radius: 8px; }
+.pdf-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.pdf-nav button { height: 30px; padding: 0 12px; border: none; border-radius: 15px; background: #eef3fb; color: #1f4aa8; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+.pdf-nav button:disabled { opacity: .4; cursor: default; }
+.pdf-nav span { font-size: 13px; color: #888; }
+.pdf-img { display: block; margin: 0 auto; max-width: 100%; max-height: 62vh; width: auto; height: auto; object-fit: contain; }
 .file-text pre { white-space: pre-wrap; word-break: break-word; font-size: 13px; font-family: inherit; }
 .file-other { text-align: center; padding: 40px 0; }
 
