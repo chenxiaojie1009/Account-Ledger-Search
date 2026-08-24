@@ -23,6 +23,7 @@ from backend.models import User, Cabinet, Box, File
 from backend.auth import hash_password, verify_password, create_token, token_user_id, role_allowed
 from backend.schemas import (
     LoginIn, SetCountIn, RenameIn, UploadIn, RestoreIn, ImportIn,
+    UpdateCatalogIn, ConfigIn, ConfigCabinetIn,
     UserCreateIn, UserUpdateIn,
 )
 
@@ -149,16 +150,54 @@ def unlink_file(f: File):
         pass
 
 
+def cabinet_count(db: Session):
+    return db.query(Cabinet).count()
+
+
+def apply_config(db: Session, new_cabs: list):
+    """按后台配置同步柜子数量与门型（单开/对开），保留索引对应的目录数据。"""
+    n = len(new_cabs)
+    old = db.query(Cabinet).order_by(Cabinet.sort).all()
+    old_count = len(old)
+    # 删除多余的柜（及其台账、文件）
+    for i in range(n, old_count):
+        old_id = old[i].id
+        for f in db.query(File).filter_by(box_cabinet_id=old_id).all():
+            unlink_file(f)
+            db.delete(f)
+        db.query(Box).filter_by(cabinet_id=old_id).delete(synchronize_session=False)
+        db.query(Cabinet).filter_by(id=old_id).delete(synchronize_session=False)
+    # 更新/新增柜
+    for i in range(n):
+        name = (new_cabs[i].get('name') or '').strip() or f'{i + 1}号柜'
+        door = 'single' if new_cabs[i].get('doorType') == 'single' else 'double'
+        if i < old_count:
+            cab = old[i]
+            cab.name = name
+            cab.door_type = door
+            cab.sort = i
+            if cab.id != i:
+                db.query(Box).filter_by(cabinet_id=cab.id).update({'cabinet_id': i})
+                db.query(File).filter_by(box_cabinet_id=cab.id).update({'box_cabinet_id': i})
+                cab.id = i
+        else:
+            db.add(Cabinet(id=i, name=name, door_type=door, sort=i))
+            for s in range(SHELF_COUNT):
+                for b in range(DEFAULT_BOXES_PER_SHELF):
+                    db.add(Box(cabinet_id=i, shelf=s, slot=b, name='备用'))
+    db.commit()
+
+
 def reset_catalog(db: Session):
     for f in db.query(File).all():
         unlink_file(f)
         db.delete(f)
     for b in db.query(Box).all():
         db.delete(b)
-    for c in range(CABINET_COUNT):
+    for c in db.query(Cabinet).order_by(Cabinet.sort).all():
         for s in range(SHELF_COUNT):
             for b in range(DEFAULT_BOXES_PER_SHELF):
-                db.add(Box(cabinet_id=c, shelf=s, slot=b, name='备用'))
+                db.add(Box(cabinet_id=c.id, shelf=s, slot=b, name='备用'))
     db.commit()
 
 
@@ -206,6 +245,10 @@ def build_backup(db: Session):
 
 def restore_from_backup(db: Session, zf: zipfile.ZipFile, manifest: dict):
     """按备份内容还原：目录、文件、用户"""
+    cabinets = manifest.get('cabinets') or []
+    # 0) 先按备份同步柜子数量与门型（可组合）
+    apply_config(db, [{'doorType': src.get('doorType', 'double'), 'name': src.get('name', '')} for src in cabinets])
+
     # 1) 清空当前台账与文件
     for f in db.query(File).all():
         unlink_file(f)
@@ -215,11 +258,8 @@ def restore_from_backup(db: Session, zf: zipfile.ZipFile, manifest: dict):
     db.flush()
 
     # 2) 还原目录
-    cabinets = manifest.get('cabinets') or []
-    for ci in range(CABINET_COUNT):
-        src = cabinets[ci] if ci < len(cabinets) else None
-        if not src:
-            continue
+    for ci in range(len(cabinets)):
+        src = cabinets[ci] or {}
         shelves = src.get('shelves') or []
         for si in range(SHELF_COUNT):
             names = shelves[si] if si < len(shelves) else []
@@ -370,8 +410,8 @@ def import_names(body: ImportIn, token: str = Depends(get_token), db: Session = 
     for idx, r in enumerate(body.rows):
         line = idx + 1
         cabinet, layer, slot, name = r.cabinet, r.layer, r.slot, (r.name or '').strip()
-        if not (1 <= cabinet <= CABINET_COUNT):
-            errors.append(f'第{line}行：柜号应为1-{CABINET_COUNT}')
+        if not (1 <= cabinet <= cabinet_count(db)):
+            errors.append(f'第{line}行：柜号应为1-{cabinet_count(db)}')
             continue
         if not (1 <= layer <= SHELF_COUNT):
             errors.append(f'第{line}行：层号应为1-{SHELF_COUNT}')
@@ -391,6 +431,53 @@ def import_names(body: ImportIn, token: str = Depends(get_token), db: Session = 
         rename_box(db, ci, si, bi, name)
         imported += 1
     return {'ok': True, 'imported': imported, 'failed': len(errors), 'errors': errors, 'cabinets': get_catalog(db)}
+
+
+# ---------------- 批量保存目录（保存全部） ----------------
+@app.post('/api/update-catalog')
+def update_catalog(body: UpdateCatalogIn, token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    if not role_allowed(user.role, 'editor'):
+        return err(403, '权限不足')
+    ci = body.cabinetId
+    if not (0 <= ci < cabinet_count(db)):
+        return err(400, '柜号无效')
+    for si in range(SHELF_COUNT):
+        names = body.shelves[si] if si < len(body.shelves) else []
+        cur = db.query(Box).filter_by(cabinet_id=ci, shelf=si).count()
+        for bi, name in enumerate(names):
+            if bi >= cur:
+                break
+            rename_box(db, ci, si, bi, name)
+    return {'ok': True, 'cabinets': get_catalog(db)}
+
+
+# ---------------- 柜体配置（数量 + 单开/对开可组合） ----------------
+@app.get('/api/config')
+def get_config(token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    return {'ok': True, 'cabinets': get_catalog(db)}
+
+
+@app.post('/api/config')
+def save_config(body: ConfigIn, token: str = Depends(get_token), db: Session = Depends(get_db)):
+    user = require_user(token, db)
+    if not user:
+        return err(401, '未登录')
+    if not role_allowed(user.role, 'editor'):
+        return err(403, '权限不足')
+    cabs = body.cabinets
+    if not (1 <= len(cabs) <= 20):
+        return err(400, '柜子数量应为 1-20')
+    for c in cabs:
+        if c.doorType not in ('double', 'single'):
+            return err(400, '门型只能为 对开(double) 或 单开(single)')
+    apply_config(db, [{'name': c.name, 'doorType': c.doorType} for c in cabs])
+    return {'ok': True, 'cabinets': get_catalog(db)}
 
 
 # ---------------- 文件 ----------------
@@ -421,6 +508,12 @@ def upload_file(body: UploadIn, token: str = Depends(get_token), db: Session = D
     ext = Path(body.filename).suffix or '.bin'
     stored = f'{int(__import__("time").time() * 1000)}-{uuid.uuid4().hex[:12]}{ext}'
     (UPLOAD_DIR / stored).write_bytes(data)
+    # 上传文件后，目录管理的台账名称也相应同步为文件名（去扩展名）
+    stem = Path(body.filename).stem
+    if stem:
+        row = db.query(Box).filter_by(cabinet_id=body.cabinetId, shelf=body.shelf, slot=body.slot).first()
+        if row:
+            row.name = stem
     f = File(
         box_cabinet_id=body.cabinetId,
         box_shelf=body.shelf,

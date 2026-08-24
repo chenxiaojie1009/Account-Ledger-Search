@@ -59,6 +59,20 @@ class ImportIn(BaseModel):
     rows: List[ImportRowIn]
 
 
+class UpdateCatalogIn(BaseModel):
+    cabinetId: int
+    shelves: List[List[str]]
+
+
+class ConfigCabinetIn(BaseModel):
+    doorType: str
+    name: Optional[str] = ''
+
+
+class ConfigIn(BaseModel):
+    cabinets: List[ConfigCabinetIn]
+
+
 class UserCreateIn(BaseModel):
     username: str
     displayName: Optional[str] = ''

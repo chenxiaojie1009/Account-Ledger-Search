@@ -32,7 +32,10 @@ function assert(cond, msg) {
   const hasLogin = await page.evaluate(() => !!document.getElementById('loginModal'));
   assert(hasLogin, '3D app shows login');
   if (hasLogin) {
-    await page.evaluate(() => { document.getElementById('pwInput').value = '123456'; });
+    await page.evaluate(() => {
+      document.getElementById('apiInput').value = 'http://127.0.0.1:10600';
+      document.getElementById('pwInput').value = '123456';
+    });
     await page.click('#loginOk');
     await sleep(2500);
   }
@@ -109,18 +112,22 @@ function assert(cond, msg) {
   assert(backupUI, 'backup download/restore buttons present');
   await page.screenshot({ path: OUT + '/03-admin-web.png' });
 
-  // 改一个名称并验证
+  // 回到目录管理，用统一的「保存全部」改一个名称并验证
+  await page.evaluate(() => { const b = document.querySelector('nav .tab[data-tab="dir"]'); if (b) b.click(); });
+  await sleep(400);
   await page.evaluate(() => {
-    const first = document.querySelector('.box-name');
+    const first = document.querySelector('.box-name[data-si="2"][data-bi="0"]') || document.querySelector('.box-name');
     first.value = 'QA测试台账';
-    first.parentElement.querySelector('.box-save').click();
   });
+  await page.click('#saveAllBtn');
   await sleep(900);
-  const renamed = await page.evaluate(() => {
-    const cab = window.__adminCatalog ? null : null;
-    return Array.from(document.querySelectorAll('.box-name')).some(i => i.value === 'QA测试台账');
+  const renamed = await page.evaluate(async () => {
+    const token = localStorage.getItem('taizhang_admin_token');
+    const r = await fetch('/api/catalog', { headers: { 'Authorization': 'Bearer ' + token } });
+    const j = await r.json();
+    return j.cabinets[0].shelves[2][0] === 'QA测试台账';
   });
-  assert(renamed, 'admin rename saved and re-rendered');
+  assert(renamed, 'admin save-all renamed and synced');
 
   assert(errors === 0, 'no console errors, got ' + errors);
   console.log(failed === 0 ? 'QA ALL PASS' : 'QA FAILED: ' + failed);

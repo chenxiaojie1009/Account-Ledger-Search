@@ -70,6 +70,12 @@
   .import-result .ok { color: #37b26b; font-weight: 700; }
   .import-result .bad { color: #e5484d; }
   code { background: #eef1f6; padding: 1px 5px; border-radius: 5px; }
+  .primary-ghost { background: #5b8def; color: #fff; }
+  .config-panel { background: #fff; border: 1px solid #e3e8f0; border-radius: 14px; padding: 18px; }
+  .config-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .config-row input { flex: 1; height: 36px; }
+  .config-row select { width: 130px; height: 36px; }
+  .config-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 </style>
 </head>
 <body>
@@ -91,6 +97,7 @@
     <h1>台账后台管理</h1>
     <div class="user">
       <span id="curUser"></span>
+      <button id="saveAllBtn" class="ghost primary-ghost" style="display:none">保存全部</button>
       <button id="resetBtn" class="ghost" style="display:none">恢复默认</button>
       <button id="logoutBtn" class="ghost">退出</button>
     </div>
@@ -98,6 +105,7 @@
   <nav>
     <button class="tab active" data-tab="dir">目录管理</button>
     <button class="tab" data-tab="files">文件管理</button>
+    <button class="tab" data-tab="config" id="configTab">柜体配置</button>
     <button class="tab" data-tab="import" id="importTab">名称导入</button>
     <button class="tab" data-tab="users" id="usersTab" style="display:none">用户管理</button>
     <button class="tab" data-tab="backup" id="backupTab" style="display:none">备份</button>
@@ -131,6 +139,22 @@
         </div>
         <div class="err" id="impMsg"></div>
         <div id="impResult" style="display:none;margin-top:12px"></div>
+      </div>
+    </section>
+    <section id="tab-config" style="display:none">
+      <div class="config-panel">
+        <h3>柜体配置（数量 + 单开/对开组合）</h3>
+        <p class="sub">在这里设置柜子数量，并为每个柜子选择「对开 / 单开」。保存后 APK 三维场景、目录管理、文件管理都会按新配置刷新。新增柜子默认为空（备用），删除柜子会同时删除其下已上传的文件。</p>
+        <div class="config-toolbar">
+          <label>柜子数量</label>
+          <input id="cfgCount" type="number" min="1" max="20" style="width:100px">
+          <button id="cfgCountBtn" class="ghost">应用数量</button>
+        </div>
+        <div id="cfgRows"></div>
+        <div class="backup-actions" style="margin-top:14px">
+          <button id="cfgSave" class="primary" style="width:auto;margin:0">保存并应用配置</button>
+          <span class="err" id="cfgMsg" style="display:inline-block;margin:0 0 0 10px"></span>
+        </div>
       </div>
     </section>
     <section id="tab-users" style="display:none">
@@ -214,6 +238,8 @@
     $('#usersTab').style.display = me.role === 'admin' ? '' : 'none';
     $('#backupTab').style.display = me.role === 'admin' ? '' : 'none';
     $('#importTab').style.display = (me.role === 'editor' || me.role === 'admin') ? '' : 'none';
+    $('#configTab').style.display = (me.role === 'editor' || me.role === 'admin') ? '' : 'none';
+    $('#saveAllBtn').style.display = (curTab === 'dir' && (me.role === 'editor' || me.role === 'admin')) ? '' : 'none';
     $('#resetBtn').style.display = me.role === 'admin' ? '' : 'none';
     renderDir();
   }
@@ -247,6 +273,7 @@
       catalog = r.cabinets;
       renderCabTabs();
       renderShelves();
+      if (curTab === 'config') renderConfig();
     }).catch(function (e) { toast('加载目录失败：' + e.message); });
   }
   function renderCabTabs() {
@@ -276,8 +303,7 @@
         '<button data-act="inc" data-si="' + si + '"' + (count >= 40 ? ' disabled' : '') + '>+</button>' +
         '</div></div><div class="boxes">';
       shelf.forEach(function (name, bi) {
-        html += '<div class="box-row"><input class="box-name" data-si="' + si + '" data-bi="' + bi + '" maxlength="40" value="' + esc(name) + '">' +
-          '<button class="box-save" data-si="' + si + '" data-bi="' + bi + '">保存</button></div>';
+        html += '<div class="box-row"><input class="box-name" data-si="' + si + '" data-bi="' + bi + '" maxlength="40" value="' + esc(name) + '"></div>';
       });
       html += '</div></div>';
     }
@@ -294,17 +320,19 @@
         }).catch(function (e) { toast('保存失败：' + e.message); });
       });
     });
-    $('#shelves').querySelectorAll('.box-save').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var si = Number(b.dataset.si), bi = Number(b.dataset.bi);
-        var name = b.previousElementSibling.value.trim() || '备用';
-        api('POST', '/api/rename', { cabinetId: curCab, shelf: si, slot: bi, name: name }).then(function (r) {
-          catalog = r.cabinets;
-          renderDir();
-          toast('名称已保存');
-        }).catch(function (e) { toast('保存失败：' + e.message); });
-      });
+    $('#saveAllBtn').style.display = (me.role === 'editor' || me.role === 'admin') ? '' : 'none';
+  }
+  function saveAll() {
+    var shelves = catalog[curCab].shelves.map(function (s) { return s.slice(); });
+    document.querySelectorAll('#shelves .box-name').forEach(function (inp) {
+      var si = Number(inp.dataset.si), bi = Number(inp.dataset.bi);
+      if (shelves[si] && shelves[si][bi] != null) shelves[si][bi] = inp.value.trim() || '备用';
     });
+    api('POST', '/api/update-catalog', { cabinetId: curCab, shelves: shelves }).then(function (r) {
+      catalog = r.cabinets;
+      renderDir();
+      toast('已保存全部名称');
+    }).catch(function (e) { toast('保存失败：' + e.message); });
   }
 
   /* ---------- 文件管理 ---------- */
@@ -370,7 +398,15 @@
     var b = currentBox();
     var idx = 0;
     function next() {
-      if (idx >= files.length) { loadFiles(); return; }
+      if (idx >= files.length) {
+        // 上传后刷新目录，使台账名称同步为文件名
+        api('GET', '/api/catalog').then(function (r) {
+          catalog = r.cabinets;
+          fillSlotOptions();
+          toast('上传完成，目录名称已同步');
+        }).catch(function (e) { toast('上传完成，但目录刷新失败：' + e.message); });
+        return;
+      }
       var file = files[idx++];
       var reader = new FileReader();
       reader.onload = function () {
@@ -455,10 +491,13 @@
       document.querySelectorAll('nav .tab').forEach(function (x) { x.classList.toggle('active', x === b); });
       $('#tab-dir').style.display = curTab === 'dir' ? '' : 'none';
       $('#tab-files').style.display = curTab === 'files' ? '' : 'none';
+      $('#tab-config').style.display = curTab === 'config' ? '' : 'none';
       $('#tab-import').style.display = curTab === 'import' ? '' : 'none';
       $('#tab-users').style.display = curTab === 'users' ? '' : 'none';
       $('#tab-backup').style.display = curTab === 'backup' ? '' : 'none';
+      $('#saveAllBtn').style.display = (curTab === 'dir' && (me.role === 'editor' || me.role === 'admin')) ? '' : 'none';
       if (curTab === 'files') renderFileFilters();
+      if (curTab === 'config') renderConfig();
       if (curTab === 'users') renderUsers();
     });
   });
@@ -645,6 +684,55 @@
     if (this.files && this.files[0]) importCsv(this.files[0]);
     this.value = '';
   });
+
+  /* ---------- 柜体配置（数量 + 单开/对开可组合） ---------- */
+  function renderConfig() {
+    if (!catalog) return;
+    $('#cfgCount').value = catalog.length;
+    buildConfigRows();
+  }
+  function buildConfigRows() {
+    var n = Number($('#cfgCount').value) || (catalog ? catalog.length : 0);
+    var rows = $('#cfgRows');
+    var html = '';
+    for (var i = 0; i < n; i++) {
+      var c = catalog[i];
+      var name = c ? c.name : ((i + 1) + '号柜');
+      var door = c ? c.doorType : 'double';
+      html += '<div class="config-row">' +
+        '<span style="width:70px;font-size:13px;color:#888">' + (i + 1) + '号柜</span>' +
+        '<input data-ci="' + i + '" data-field="name" value="' + esc(name) + '" placeholder="柜子名称">' +
+        '<select data-ci="' + i + '" data-field="door">' +
+        '<option value="double"' + (door === 'double' ? ' selected' : '') + '>对开</option>' +
+        '<option value="single"' + (door === 'single' ? ' selected' : '') + '>单开</option>' +
+        '</select></div>';
+    }
+    rows.innerHTML = html;
+  }
+  $('#cfgCountBtn').addEventListener('click', function () {
+    var n = Number($('#cfgCount').value);
+    if (!(n >= 1 && n <= 20)) { $('#cfgMsg').textContent = '数量应为 1-20'; return; }
+    $('#cfgMsg').textContent = '';
+    buildConfigRows();
+    toast('已生成柜子行，点击「保存并应用配置」生效');
+  });
+  $('#cfgSave').addEventListener('click', function () {
+    var n = Number($('#cfgCount').value) || (catalog ? catalog.length : 0);
+    if (!(n >= 1 && n <= 20)) { $('#cfgMsg').textContent = '数量应为 1-20'; return; }
+    var cabs = [];
+    document.querySelectorAll('#cfgRows .config-row').forEach(function (row) {
+      cabs.push({ name: row.querySelector('[data-field="name"]').value.trim(), doorType: row.querySelector('[data-field="door"]').value });
+    });
+    var btn = $('#cfgSave'); btn.disabled = true;
+    api('POST', '/api/config', { cabinets: cabs }).then(function (r) {
+      catalog = r.cabinets;
+      renderDir();
+      toast('柜体配置已保存，APK 刷新后按新配置建模');
+      $('#cfgMsg').textContent = '';
+    }).catch(function (e) { $('#cfgMsg').textContent = e.message; }).finally(function () { btn.disabled = false; });
+  });
+
+  $('#saveAllBtn').addEventListener('click', saveAll);
 
   /* ---------- 启动 ---------- */
   if (token) {

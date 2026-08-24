@@ -60,8 +60,8 @@
       '<input class="text-input" id="userInput" type="text" autocomplete="off" value="admin">' +
       '<label class="field-label">密码</label>' +
       '<input class="text-input pw-input" id="pwInput" type="password" inputmode="text" autocomplete="off">' +
-      '<label class="field-label">后端地址（可选）</label>' +
-      '<input class="text-input" id="apiInput" type="text" autocomplete="off" placeholder="默认 http://主机:10600，如 http://192.168.1.10:10600" value="' + escapeHtml(Store.apiBase()) + '">' +
+      '<label class="field-label">后端地址（电脑的局域网 IP）</label>' +
+      '<input class="text-input" id="apiInput" type="text" autocomplete="off" placeholder="必填，如 http://192.168.1.10:10600（不要用 127.0.0.1）" value="">' +
       '<div class="error-hint" id="loginError"></div>' +
       '<div class="modal-actions">' +
       '<button class="btn btn-ghost" id="loginCancel" type="button">取消</button>' +
@@ -73,18 +73,28 @@
       var username = $('#userInput').value.trim();
       var password = $('#pwInput').value;
       var api = $('#apiInput').value.trim();
-      Store.setApiBase(api);
       var btn = $('#loginOk');
+      if (!api) {
+        $('#loginError').textContent = '请填写后端地址：电脑的局域网 IP（如 http://192.168.1.10:10600）';
+        return;
+      }
+      Store.setApiBase(api);
       btn.disabled = true;
       btn.textContent = '登录中…';
       try {
         var user = await Store.login(username, password);
+        // 登录成功后才保留后端地址
+        Store.setApiBase(api);
         closeModal();
         if (els.searchBar) els.searchBar.classList.remove('hidden');
         toast('欢迎，' + (user.displayName || user.username));
         afterLogin();
       } catch (e) {
-        $('#loginError').textContent = e.message || '登录失败';
+        var msg = e.message || '登录失败';
+        if (/failed to fetch|network|fetch|load failed/i.test(msg)) {
+          msg = '无法连接服务器，请确认：①后端地址填电脑局域网 IP（如 http://192.168.x.x:10600，不要用 127.0.0.1）；②手机与电脑同一局域网；③电脑防火墙已放行 10600 端口。';
+        }
+        $('#loginError').textContent = msg;
         btn.disabled = false;
         btn.textContent = '登录';
       }

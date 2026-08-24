@@ -33,10 +33,8 @@
     if (window.APP_CONFIG && window.APP_CONFIG.apiBase) return window.APP_CONFIG.apiBase;
     var saved = loadApiBase();
     if (saved) return saved;
-    // 默认：与当前页面同主机，后端端口 10600
-    try {
-      return window.location.protocol + '//' + window.location.hostname + ':10600';
-    } catch (e) { return ''; }
+    // 不自动猜测主机：手机上默认会是 localhost，导致连不上电脑。必须由用户填写电脑局域网 IP。
+    return '';
   }
   function setApiBase(v) {
     try {
