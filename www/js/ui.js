@@ -235,8 +235,16 @@
       '</div></div>'
     );
     if (kind === 'text') {
-      fetch(url).then(function (r) { return r.text(); }).then(function (t) {
-        var box = $('.file-text'); if (box) box.innerHTML = '<pre>' + escapeHtml(t) + '</pre>';
+      // CSV/TXT 常见 GBK 编码：先按 UTF-8 严格解码，失败则回退 GBK，避免中文乱码
+      fetch(url).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+        var text = '';
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+        } catch (e) {
+          try { text = new TextDecoder('gbk').decode(buf); }
+          catch (e2) { text = new TextDecoder('utf-8').decode(buf); }
+        }
+        var box = $('.file-text'); if (box) box.innerHTML = '<pre>' + escapeHtml(text) + '</pre>';
       }).catch(function () {
         var box = $('.file-text'); if (box) box.innerHTML = '<span class="shelf-empty">无法读取文本内容</span>';
       });
