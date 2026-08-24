@@ -42,7 +42,7 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 .blob-3 { width: 26vw; height: 26vw; right: 18vw; top: -10vw; background: radial-gradient(circle, #e3f3ea 0%, rgba(227, 243, 234, 0) 70%); opacity: .4; }
 
 #scene { position: fixed; inset: 0; z-index: 1; }
-#scene canvas { display: block; }
+#scene canvas { display: block; touch-action: none; }
 
 /* ---------- 左上角主页按钮 ---------- */
 .btn-home {
