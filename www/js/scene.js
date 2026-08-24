@@ -922,6 +922,9 @@
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controls.enablePan = false;
+      // 禁用缩放（含双击缩放）：避免“双击柜子空白位置”时相机自动拉近放大；
+      // 聚焦/放大统一由“点击台账盒子”的飞行定位动画完成。
+      controls.enableZoom = false;
       controls.minDistance = 1.5;
       controls.maxDistance = 60;
       controls.minPolarAngle = 0.25;
