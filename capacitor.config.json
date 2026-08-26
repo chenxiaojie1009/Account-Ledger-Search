@@ -1,0 +1,17 @@
+{
+  "appId": "com.taizhang.sim",
+  "appName": "台账查找",
+  "webDir": "www",
+  "backgroundColor": "#F4F7FB",
+  "server": {
+    "cleartext": true,
+    "androidScheme": "http"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "ios": {
+    "contentInset": "always",
+    "scheme": "App"
+  }
+}
