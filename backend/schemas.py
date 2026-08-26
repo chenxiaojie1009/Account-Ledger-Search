@@ -1,5 +1,6 @@
 """Pydantic 请求/响应模型"""
-from typing import Optional, List
+from typing import List, Optional
+
 from pydantic import BaseModel
 
 
@@ -13,6 +14,7 @@ class UserOut(BaseModel):
     username: str
     displayName: str
     role: str
+    mustChangePassword: bool = False
 
 
 class LoginOut(BaseModel):
@@ -77,7 +79,7 @@ class ConfigIn(BaseModel):
 class UserCreateIn(BaseModel):
     username: str
     displayName: Optional[str] = ''
-    password: Optional[str] = '123456'
+    password: Optional[str] = None
     role: Optional[str] = 'viewer'
 
 
@@ -96,6 +98,7 @@ class CabinetOut(BaseModel):
     id: int
     name: str
     doorType: str
+    shelfColors: Optional[List[str]] = None
     shelves: List[List[str]]
 
 
@@ -114,3 +117,14 @@ class FileOut(BaseModel):
     size: int
     createdAt: str
     url: str
+    previewUrl: str
+    downloadable: bool
+
+
+class AuditOut(BaseModel):
+    id: int
+    time: str
+    username: str
+    action: str
+    detail: str
+    ip: str

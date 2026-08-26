@@ -374,6 +374,10 @@ table.data-table {
 .role-sel:focus { border-color: var(--accent); }
 .role-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 20px; font-size: 12.5px; font-weight: 600; }
 .role-badge.role-admin { background: rgba(79,125,249,.1); color: var(--accent-deep); }
+.role-badge.role-viewer { background: rgba(156,163,175,.12); color: #6b7280; }
+.mono { font-family: Consolas, "Courier New", monospace; font-size: 12.5px; }
+.table-wrap { overflow-x: auto; margin-top: 12px; }
+.audit-toolbar { margin-top: 12px; }
 .text-muted { color: var(--text-3); }
 
 /* 配置 */
@@ -526,6 +530,10 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         备份还原
       </button>
+      <button class="nav-item" data-tab="audit" id="auditTab" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+        操作日志
+      </button>
     </nav>
     <div class="sidebar-user">
       <div class="avatar" id="userAvatar">A</div>
@@ -638,7 +646,7 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
         <div class="add-user">
           <input id="nuName" placeholder="用户名" class="input">
           <input id="nuDisplay" placeholder="显示名" class="input">
-          <input id="nuPass" placeholder="密码（默认123456）" class="input">
+          <input id="nuPass" placeholder="初始密码（至少8位，含字母数字）" class="input">
           <select id="nuRole" class="input"><option value="viewer">只读</option><option value="editor">编辑</option><option value="admin">管理员</option></select>
           <button id="nuAdd" class="btn btn-primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -673,6 +681,22 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
           <div class="err-text" id="backupMsg"></div>
         </div>
       </section>
+
+      <!-- 操作日志（安全审计） -->
+      <section id="tab-audit" style="display:none">
+        <div class="card">
+          <h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+            操作日志（最近 300 条）
+          </h3>
+          <p class="card-sub">记录登录、文件上传/预览/下载、备份还原、用户管理等关键操作，用于发现内网资料异常访问。</p>
+          <div class="audit-toolbar"><button id="auditRefresh" class="btn btn-ghost btn-sm">刷新</button></div>
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>时间</th><th>用户</th><th>操作</th><th>详情</th><th>IP</th></tr></thead>
+            <tbody id="auditBody"></tbody>
+          </table></div>
+        </div>
+      </section>
     </div>
   </div>
 </div>
@@ -687,13 +711,14 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
       <button class="modal-close" id="pwdClose">&times;</button>
     </div>
     <div class="modal-body">
+      <div class="err-text" id="pwdWarn" style="display:none;color:#b45309;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px">为保障内网资料安全，首次登录必须修改初始密码后才能使用系统。</div>
       <div class="form-group">
         <label>原密码</label>
         <input type="password" id="oldPwd" class="input" placeholder="请输入当前密码" autocomplete="current-password">
       </div>
       <div class="form-group">
         <label>新密码</label>
-        <input type="password" id="newPwd" class="input" placeholder="至少 4 位" autocomplete="new-password">
+        <input type="password" id="newPwd" class="input" placeholder="至少 8 位，含字母和数字" autocomplete="new-password">
       </div>
       <div class="form-group">
         <label>确认新密码</label>
@@ -714,9 +739,10 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
   var TOKEN_KEY = 'taizhang_admin_token';
   var token = localStorage.getItem(TOKEN_KEY) || '';
   var me = null, catalog = null, curCab = 0, curTab = 'dir';
+  var forcePwd = false; // 首次登录强制修改初始密码，未完成前禁止使用后台
   var $ = function (s) { return document.querySelector(s); };
 
-  var TAB_TITLES = { dir: '目录管理', files: '文件管理', config: '柜体配置', import: '名称导入', users: '用户管理', backup: '备份还原' };
+  var TAB_TITLES = { dir: '目录管理', files: '文件管理', config: '柜体配置', import: '名称导入', users: '用户管理', backup: '备份还原', audit: '操作日志' };
 
   function toast(msg, type) {
     var t = $('#toast');
@@ -788,6 +814,7 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
     $('#userAvatar').textContent = (me.displayName || me.username).charAt(0).toUpperCase();
     $('#usersTab').style.display = me.role === 'admin' ? '' : 'none';
     $('#backupTab').style.display = me.role === 'admin' ? '' : 'none';
+    $('#auditTab').style.display = me.role === 'admin' ? '' : 'none';
     $('#importTab').style.display = (me.role === 'editor' || me.role === 'admin') ? '' : 'none';
     $('#configTab').style.display = (me.role === 'editor' || me.role === 'admin') ? '' : 'none';
     switchTab(curTab);
@@ -799,14 +826,26 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
     var btn = $('#loginBtn');
     btn.disabled = true; btn.textContent = '登录中…';
     api('POST', '/api/login', { username: $('#u').value.trim(), password: $('#p').value }).then(function (r) {
+      if (!r.ok) { throw new Error(r.error || '登录失败'); }
       saveToken(r.token);
       me = r.user;
-      showApp();
-      toast('登录成功');
+      if (r.user.mustChangePassword) {
+        forcePwd = true;
+        openPwdModal(true);
+        toast('首次登录请先修改初始密码', 'warn');
+      } else {
+        showApp();
+        toast('登录成功');
+      }
     }).catch(function (e) {
       $('#loginErr').textContent = e.message || '登录失败';
       btn.disabled = false; btn.textContent = '登 录';
     });
+  }
+
+  function requirePwdChanged() {
+    if (forcePwd) { toast('请先修改初始密码', 'warn'); return false; }
+    return true;
   }
 
   function logout() {
@@ -965,8 +1004,10 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
           '<div class="file-info"><div class="file-name">' + esc(f.originalName) + '</div>' +
           '<div class="file-meta">' + fmt(f.size) + '</div></div>' +
           '<div class="file-actions">' +
-          '<a class="btn btn-ghost btn-sm" href="' + esc(f.url) + '" target="_blank" rel="noopener">查看</a>' +
-          '<a class="btn btn-ghost btn-sm" href="' + esc(f.url) + '" download="' + esc(f.originalName) + '">下载</a>' +
+          '<a class="btn btn-ghost btn-sm" href="' + esc(f.previewUrl || f.url) + '" target="_blank" rel="noopener">查看</a>' +
+          (f.downloadable
+            ? '<a class="btn btn-ghost btn-sm" href="' + esc(f.url) + '" download="' + esc(f.originalName) + '">下载</a>'
+            : '<span class="role-badge role-viewer" title="只读用户仅可预览">仅预览</span>') +
           '<button class="btn btn-danger btn-sm del" data-id="' + f.id + '">删除</button></div></div>';
       }).join('');
       list.querySelectorAll('.del').forEach(function (btn) {
@@ -1051,10 +1092,14 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
   function addUser() {
     var username = $('#nuName').value.trim();
     if (!username) { toast('请填写用户名', 'warn'); return; }
+    var pw = $('#nuPass').value;
+    if (!pw) { toast('请填写初始密码', 'warn'); return; }
+    if (pw.length < 8) { toast('密码至少 8 位', 'warn'); return; }
+    if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) { toast('密码需同时包含字母和数字', 'warn'); return; }
     api('POST', '/api/users', {
       username: username,
       displayName: $('#nuDisplay').value.trim() || username,
-      password: $('#nuPass').value || '123456',
+      password: pw,
       role: $('#nuRole').value
     }).then(function () {
       toast('已添加用户');
@@ -1065,9 +1110,10 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
 
   /* ---------- Tab 切换 ---------- */
   function switchTab(tab) {
+    if (!requirePwdChanged()) return;
     curTab = tab;
     document.querySelectorAll('.nav-item').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === tab); });
-    ['dir','files','config','import','users','backup'].forEach(function (t) {
+    ['dir','files','config','import','users','backup','audit'].forEach(function (t) {
       var el = document.getElementById('tab-' + t);
       if (el) el.style.display = t === tab ? '' : 'none';
     });
@@ -1077,6 +1123,7 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
     if (tab === 'files') renderFileFilters();
     if (tab === 'config') renderConfig();
     if (tab === 'users') renderUsers();
+    if (tab === 'audit') renderAudit();
     // 移动端关闭侧边栏
     $('#sidebar').classList.remove('open');
   }
@@ -1088,32 +1135,69 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
   $('#changePwdBtn').addEventListener('click', openPwdModal);
   $('#pwdClose').addEventListener('click', closePwdModal);
   $('#pwdCancel').addEventListener('click', closePwdModal);
-  $('#pwdModal').addEventListener('click', function (e) { if (e.target === this) closePwdModal(); });
+  // 强制改密时不允许点遮罩关闭，防止进入“被拦截”的死胡同
+  $('#pwdModal').addEventListener('click', function (e) {
+    if (e.target === this && !forcePwd) closePwdModal();
+  });
   $('#pwdSubmit').addEventListener('click', submitChangePwd);
   $('#confirmPwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitChangePwd(); });
   $('#oldPwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('#newPwd').focus(); });
   $('#newPwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('#confirmPwd').focus(); });
 
-  function openPwdModal() {
+  function openPwdModal(force) {
+    forcePwd = force || forcePwd;
     $('#oldPwd').value = ''; $('#newPwd').value = ''; $('#confirmPwd').value = ''; $('#pwdErr').textContent = '';
+    $('#pwdWarn').style.display = forcePwd ? '' : 'none';
+    $('#pwdClose').style.display = forcePwd ? 'none' : '';
+    $('#pwdCancel').style.display = forcePwd ? 'none' : '';
     $('#pwdModal').classList.add('show');
     setTimeout(function () { $('#oldPwd').focus(); }, 100);
   }
-  function closePwdModal() { $('#pwdModal').classList.remove('show'); }
+  function closePwdModal() {
+    if (forcePwd) return; // 强制改密未完成前不可关闭
+    $('#pwdModal').classList.remove('show');
+  }
   function submitChangePwd() {
     var oldP = $('#oldPwd').value, newP = $('#newPwd').value, cfP = $('#confirmPwd').value;
     var err = $('#pwdErr');
     if (!oldP) { err.textContent = '请输入原密码'; return; }
-    if (!newP || newP.length < 4) { err.textContent = '新密码至少 4 位'; return; }
+    if (!newP || newP.length < 8) { err.textContent = '新密码至少 8 位'; return; }
+    if (!/[A-Za-z]/.test(newP) || !/[0-9]/.test(newP)) { err.textContent = '新密码需同时包含字母和数字'; return; }
     if (newP !== cfP) { err.textContent = '两次输入的新密码不一致'; return; }
     if (newP === oldP) { err.textContent = '新密码不能与原密码相同'; return; }
     var btn = $('#pwdSubmit');
     btn.disabled = true; btn.textContent = '提交中…';
     api('POST', '/api/change-password', { oldPassword: oldP, newPassword: newP }).then(function () {
-      toast('密码修改成功');
+      var wasForced = forcePwd;
+      forcePwd = false;
       closePwdModal();
+      toast('密码修改成功');
+      // 强制改密时登录后尚未渲染目录（改密前目录接口被拦截），这里补一次完整渲染
+      if (wasForced) showApp();
     }).catch(function (e) { err.textContent = e.message || '修改失败'; })
       .then(function () { btn.disabled = false; btn.textContent = '确认修改'; });
+  }
+
+  /* ---------- 操作日志 ---------- */
+  var ACTION_NAMES = { login: '登录', login_fail: '登录失败', logout: '退出', change_password: '修改密码',
+    user_create: '新增用户', user_update: '更新用户', user_delete: '删除用户',
+    catalog_update: '目录变更', catalog_reset: '恢复默认', import: '名称导入', config_update: '柜体配置',
+    file_upload: '上传文件', file_delete: '删除文件', file_view: '预览文件', file_download: '下载文件',
+    backup_download: '下载备份', backup_restore: '还原备份', other: '其它' };
+  function renderAudit() {
+    api('GET', '/api/audit?limit=300').then(function (r) {
+      var body = $('#auditBody');
+      var logs = r.logs || [];
+      if (!logs.length) {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-3);padding:24px">暂无日志</td></tr>';
+        return;
+      }
+      body.innerHTML = logs.map(function (l) {
+        return '<tr><td class="mono">' + esc(l.time) + '</td><td>' + esc(l.username || '—') + '</td>' +
+          '<td><span class="role-badge role-viewer">' + esc(ACTION_NAMES[l.action] || l.action) + '</span></td>' +
+          '<td>' + esc(l.detail || '') + '</td><td class="mono">' + esc(l.ip || '') + '</td></tr>';
+      }).join('');
+    }).catch(function (e) { toast('加载日志失败：' + e.message, 'err'); });
   }
   $('#menuToggle').addEventListener('click', function () { $('#sidebar').classList.toggle('open'); });
   $('#resetBtn').addEventListener('click', function () {
@@ -1150,6 +1234,8 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
   });
 
   $('#nuAdd').addEventListener('click', addUser);
+  var auditRefresh = $('#auditRefresh');
+  if (auditRefresh) auditRefresh.addEventListener('click', renderAudit);
 
   /* ---------- 备份 / 还原 ---------- */
   function downloadBackup() {
@@ -1395,7 +1481,13 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
   if (token) {
     api('GET', '/api/me').then(function (r) {
       me = r.user;
-      showApp();
+      if (r.user.mustChangePassword) {
+        forcePwd = true;
+        openPwdModal(true);
+        toast('请先修改初始密码', 'warn');
+      } else {
+        showApp();
+      }
     }).catch(function () {
       saveToken('');
       showLogin();

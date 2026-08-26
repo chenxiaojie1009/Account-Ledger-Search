@@ -161,6 +161,17 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 }
 #searchInput::placeholder { color: var(--text-3); font-weight: 400; }
 
+.clear-btn {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  border: none; cursor: pointer;
+  background: var(--fill); color: var(--text-3);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s var(--ease-spring);
+}
+.clear-btn:hover { background: var(--line); color: var(--text-2); }
+.clear-btn:active { transform: scale(.9); }
+.clear-btn .ic { width: 14px; height: 14px; }
+
 .voice-btn {
   flex: none; width: 40px; height: 40px; border-radius: 50%;
   border: none; cursor: pointer;
@@ -588,3 +599,4 @@ input, textarea { user-select: text; -webkit-user-select: text; }
   0%, 80%, 100% { transform: scale(.6); opacity: .4; }
   40% { transform: scale(1); opacity: 1; }
 }
+\n/* ============ 安全加固相关 UI（v3.0） ============ */\n.wm-note {\n  text-align: center; font-size: 11px; color: #b4541e;\n  background: #fff4ea; border: 1px dashed #f0b98d;\n  padding: 5px 8px; border-radius: 8px; margin-bottom: 10px;\n}\n.readonly-tag {\n  display: inline-flex; align-items: center; gap: 4px;\n  font-size: 12px; color: var(--text-3); background: var(--fill);\n  border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px;\n  cursor: default; white-space: nowrap;\n}\n.pwd-warn {\n  font-size: 13px; color: #b45309; background: #fffbeb;\n  border: 1px solid #fcd34d; border-radius: 10px; padding: 8px 12px; margin-bottom: 12px;\n}\n.user-menu-card { width: 320px; max-width: 92vw; }\n.user-menu-info {\n  display: flex; flex-direction: column; gap: 4px; margin: 14px 0;\n  padding: 12px 14px; background: var(--fill); border-radius: 12px;\n}\n.user-menu-info b { font-size: 16px; color: var(--text); }\n.user-menu-info span { font-size: 12.5px; color: var(--text-3); }\n.pwd-card { width: 360px; max-width: 92vw; }\n

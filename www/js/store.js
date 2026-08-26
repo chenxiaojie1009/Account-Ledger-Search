@@ -1,5 +1,7 @@
 /* 台账查找 - 数据层（连接服务器数据库）
  * 前端统一从服务器 API 获取/保存目录，不再写入 localStorage。
+ * 安全说明：不再保存密码；文件下载地址由服务器签发“短时效票据”，
+ * 主登录令牌不会出现在 URL 中。
  */
 (function () {
   'use strict';
@@ -56,7 +58,7 @@
         var payload = null;
         try { payload = text ? JSON.parse(text) : {}; } catch (e) { payload = {}; }
         if (!res.ok) {
-          var err = new Error(payload.error || ('HTTP ' + res.status));
+          var err = new Error(payload.error || payload.detail || ('HTTP ' + res.status));
           err.status = res.status;
           err.payload = payload;
           throw err;
@@ -92,8 +94,8 @@
     try {
       var me = await request('GET', '/api/me');
       user = me.user;
-      await loadCatalog();
-      return { loggedIn: true, user: user };
+      if (!user.mustChangePassword) await loadCatalog();
+      return { loggedIn: true, user: user, mustChangePassword: !!user.mustChangePassword };
     } catch (e) {
       saveToken('');
       user = null;
@@ -105,8 +107,15 @@
     var r = await request('POST', '/api/login', { username: username, password: password });
     saveToken(r.token);
     user = r.user;
-    await loadCatalog();
-    return user;
+    // 强制改密状态下目录接口会被服务端拦截，先交给界面完成改密
+    if (!user.mustChangePassword) await loadCatalog();
+    return { user: user, mustChangePassword: !!user.mustChangePassword };
+  }
+
+  async function changePassword(oldPassword, newPassword) {
+    var r = await request('POST', '/api/change-password', { oldPassword: oldPassword, newPassword: newPassword });
+    if (user) user.mustChangePassword = false;
+    return r;
   }
 
   async function logout() {
@@ -228,6 +237,7 @@
     init: init,
     login: login,
     logout: logout,
+    changePassword: changePassword,
     loadCatalog: loadCatalog,
     setShelfCount: setShelfCount,
     renameBox: renameBox,

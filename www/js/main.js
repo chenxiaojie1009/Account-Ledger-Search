@@ -12,9 +12,14 @@
     UI.init();
     var state = await Store.init();
     if (state.loggedIn) {
-      document.getElementById('searchBar').classList.remove('hidden');
-      Scene3D.rebuildAll(true);
-      UI.startCatalogPolling();
+      if (state.mustChangePassword) {
+        // 服务端已强制：未修改初始密码前所有接口不可用
+        UI.showPwdChangeModal(true);
+      } else {
+        document.getElementById('searchBar').classList.remove('hidden');
+        Scene3D.rebuildAll(true);
+        UI.startCatalogPolling();
+      }
     } else {
       UI.showLogin();
     }

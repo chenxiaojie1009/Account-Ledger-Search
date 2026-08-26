@@ -1,6 +1,8 @@
 """SQLAlchemy 数据模型（台账查找）"""
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime
+
+from sqlalchemy import Column, DateTime, Integer, String, Text
+
 from backend.database import Base
 
 
@@ -11,7 +13,33 @@ class User(Base):
     password_hash = Column(Text, nullable=False)
     display_name = Column(String(64), default='')
     role = Column(String(16), nullable=False, default='viewer')  # viewer / editor / admin
+    # 1 = 下次登录必须修改密码（默认管理员强制改密）
+    must_change_password = Column(Integer, nullable=False, default=0)
+    last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SessionModel(Base):
+    """服务端会话：真正的登出/改密/删号都能立即吊销令牌"""
+    __tablename__ = 'sessions'
+    jti = Column(String(64), primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    ip = Column(String(64), default='')
+    user_agent = Column(String(256), default='')
+
+
+class AuditLog(Base):
+    """操作审计：记录登录、文件上传/下载/预览、备份、用户管理等关键操作"""
+    __tablename__ = 'audit_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    time = Column(DateTime, default=datetime.utcnow, index=True)
+    user_id = Column(Integer, nullable=True)
+    username = Column(String(64), default='')
+    action = Column(String(64), nullable=False, index=True)
+    detail = Column(Text, default='')
+    ip = Column(String(64), default='')
 
 
 class Cabinet(Base):
@@ -27,7 +55,7 @@ class Cabinet(Base):
 class Box(Base):
     __tablename__ = 'boxes'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    cabinet_id = Column(Integer, nullable=False)
+    cabinet_id = Column(Integer, nullable=False, index=True)
     shelf = Column(Integer, nullable=False)
     slot = Column(Integer, nullable=False)
     name = Column(String(128), nullable=False, default='备用')
