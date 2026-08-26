@@ -1,6 +1,7 @@
-fastapi
-uvicorn
-sqlalchemy
-pyjwt
-bcrypt
-PyMuPDF
+# FastAPI 后端依赖（建议固定大版本；PyInstaller 打包时会全部内置）
+fastapi>=0.110
+uvicorn>=0.29
+sqlalchemy>=2.0
+pyjwt>=2.8
+bcrypt>=4.1
+PyMuPDF>=1.24

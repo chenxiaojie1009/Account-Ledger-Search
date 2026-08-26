@@ -1,0 +1,14 @@
+node_modules/
+oh_modules/
+.local/
+.idea/
+.vscode/
+**/build/
+**/.cxx/
+/.hvigor/
+**/.preview/
+/local.properties/
+**/.testConfig/
+/.clangd
+.clang-format
+/.editorconfig

@@ -13,6 +13,72 @@ function assert(cond, msg) {
   else { console.log('[FAIL]', msg); failed++; }
 }
 
+// 安全加固后：默认管理员首次登录必须改密（改密后的测试密码）
+const QA_PWD = 'QaPass2026!';
+
+async function appLogin(page) {
+  await page.evaluate(() => {
+    document.getElementById('apiInput').value = 'http://127.0.0.1:10600';
+    document.getElementById('userInput').value = 'admin';
+    document.getElementById('pwInput').value = '123456';
+  });
+  await page.click('#loginOk');
+  await sleep(2500);
+  // 上次运行已改密时，用 QA 密码重试
+  const bad = await page.evaluate(() => {
+    const e = document.getElementById('loginError');
+    return !!e && /用户名或密码错误/.test(e.textContent);
+  });
+  if (bad) {
+    await page.evaluate((pw) => { document.getElementById('pwInput').value = pw; }, QA_PWD);
+    await page.click('#loginOk');
+    await sleep(2500);
+  }
+  // 首次登录强制改密弹窗
+  const forced = await page.evaluate(() => !!document.getElementById('pwdModal'));
+  if (forced) {
+    await page.evaluate((pw) => {
+      document.getElementById('pwdOld').value = '123456';
+      document.getElementById('pwdNew').value = pw;
+      document.getElementById('pwdConfirm').value = pw;
+    }, QA_PWD);
+    await page.click('#pwdOk');
+    await sleep(2500);
+  }
+}
+
+async function adminLogin(page) {
+  await page.evaluate(() => {
+    document.getElementById('u').value = 'admin';
+    document.getElementById('p').value = '123456';
+  });
+  await page.click('#loginBtn');
+  await sleep(1800);
+  const forced = await page.evaluate(() => {
+    const m = document.getElementById('pwdModal');
+    return !!m && m.classList.contains('show');
+  });
+  if (forced) {
+    await page.evaluate((pw) => {
+      document.getElementById('oldPwd').value = '123456';
+      document.getElementById('newPwd').value = pw;
+      document.getElementById('confirmPwd').value = pw;
+    }, QA_PWD);
+    await page.click('#pwdSubmit');
+    await sleep(1800);
+    return;
+  }
+  const bad = await page.evaluate(() => {
+    const e = document.getElementById('loginErr');
+    return !!e && /用户名或密码错误/.test(e.textContent);
+  });
+  if (bad) {
+    await page.evaluate((pw) => { document.getElementById('p').value = pw; }, QA_PWD);
+    await page.click('#loginBtn');
+    await sleep(1800);
+  }
+}
+
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const browser = await puppeteer.launch({
@@ -32,12 +98,7 @@ function assert(cond, msg) {
   const hasLogin = await page.evaluate(() => !!document.getElementById('loginModal'));
   assert(hasLogin, '3D app shows login');
   if (hasLogin) {
-    await page.evaluate(() => {
-      document.getElementById('apiInput').value = 'http://127.0.0.1:10600';
-      document.getElementById('pwInput').value = '123456';
-    });
-    await page.click('#loginOk');
-    await sleep(2500);
+    await appLogin(page);
   }
   const info = await page.evaluate(() => ({
     loggedIn: !!window.__app && !!window.__app.Store.user(),
@@ -85,15 +146,13 @@ function assert(cond, msg) {
   await sleep(1200);
   const adminLogin = await page.evaluate(() => !!document.getElementById('login') && getComputedStyle(document.getElementById('login')).display !== 'none');
   assert(adminLogin, 'admin web shows login');
-  await page.evaluate(() => { document.getElementById('p').value = '123456'; });
-  await page.click('#loginBtn');
-  await sleep(1800);
+  await adminLogin(page);
   const admin = await page.evaluate(() => {
     const app = document.getElementById('app');
     return {
       shown: app ? getComputedStyle(app).display !== 'none' : false,
       cabTabs: document.querySelectorAll('#cabTabs button').length,
-      tabs: Array.from(document.querySelectorAll('nav .tab')).map(b => b.dataset.tab),
+      tabs: Array.from(document.querySelectorAll('nav .nav-item')).map(b => b.dataset.tab),
       boxInputs: document.querySelectorAll('.box-name').length,
       usersVisible: document.getElementById('usersTab') ? getComputedStyle(document.getElementById('usersTab')).display !== 'none' : false
     };

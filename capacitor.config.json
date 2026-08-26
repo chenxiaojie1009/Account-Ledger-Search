@@ -9,5 +9,9 @@
   },
   "android": {
     "allowMixedContent": true
+  },
+  "ios": {
+    "contentInset": "always",
+    "scheme": "App"
   }
 }

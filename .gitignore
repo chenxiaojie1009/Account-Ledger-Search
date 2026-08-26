@@ -23,3 +23,13 @@ android/app/build/
 android/build/
 android/local.properties
 android/.idea/
+
+# iOS 构建输出与本地配置
+ios/App/Pods/
+ios/App/build/
+ios/App/*.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+ios/App/Podfile.lock

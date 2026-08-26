@@ -1,12 +1,25 @@
 (function () {
   'use strict';
+  function hideSplash() {
+    var s = document.getElementById('splash');
+    if (s) {
+      s.classList.add('hide');
+      setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 700);
+    }
+  }
   async function boot() {
     Scene3D.init(document.getElementById('scene'));
     UI.init();
     var state = await Store.init();
     if (state.loggedIn) {
-      document.getElementById('searchBar').classList.remove('hidden');
-      Scene3D.rebuildAll(true);
+      if (state.mustChangePassword) {
+        // 服务端已强制：未修改初始密码前所有接口不可用
+        UI.showPwdChangeModal(true);
+      } else {
+        document.getElementById('searchBar').classList.remove('hidden');
+        Scene3D.rebuildAll(true);
+        UI.startCatalogPolling();
+      }
     } else {
       UI.showLogin();
     }
@@ -19,6 +32,8 @@
         UI.doSearch();
       }
     };
+    // 启动画面最少展示 1.2s，避免闪烁
+    setTimeout(hideSplash, 1200);
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);

@@ -169,19 +169,20 @@
     return tex;
   }
 
-  /* ---------------- 材质（米灰/浅灰柜） ---------------- */
-  var matBody = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#BEB7AE', '#A39B90', 0.10, 1) });
-  var matBoard = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#B2ABA0', '#948C82', 0.13, 1) });
-  var matBack = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#A9A298', '#8D857A', 0.13, 1) });
-  var matPlinth = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#9C948A', '#837B72', 0.13, 1) });
-  var matDoor = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#C5BEB5', '#A9A198', 0.09, 1) });
-  var matFrame = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#A79F95', '#8C847B', 0.12, 1) });
-  var matHandle = new THREE.MeshLambertMaterial({ color: 0x6E6862 });
+  /* ---------------- 材质（米灰/浅灰柜，优化质感） ---------------- */
+  var matBody = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#C2BBB2', '#A89F94', 0.08, 1) });
+  var matBoard = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#B6AEA4', '#9A9186', 0.10, 1) });
+  var matBack = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#AEA69C', '#928A7F', 0.10, 1) });
+  var matPlinth = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#9E968C', '#857D74', 0.10, 1) });
+  var matDoor = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#C9C2B9', '#ADA59B', 0.07, 1) });
+  var matFrame = new THREE.MeshLambertMaterial({ map: makeWoodTexture('#ABA399', '#90887E', 0.10, 1) });
+  var matHandle = new THREE.MeshPhongMaterial({ color: 0x7A746C, shininess: 80, specular: 0xBBBBBB });
   var matGlass = new THREE.MeshPhongMaterial({
-    color: 0xcfe0ea, transparent: true, opacity: 0.14,
-    shininess: 60, specular: 0x556677, depthWrite: false
+    color: 0xd8e8f2, transparent: true, opacity: 0.10,
+    shininess: 100, specular: 0x88aacc, depthWrite: false,
+    reflectivity: 0.3
   });
-  var matFloor = new THREE.MeshLambertMaterial({ color: 0xDfE4EA });
+  var matFloor = new THREE.MeshLambertMaterial({ color: 0xE8ECF2 });
 
   function roundedBox(w, h, d, mat, radius) {
     var geo = new THREE.RoundedBoxGeometry(w, h, d, 2, radius || 0.02);
@@ -245,6 +246,8 @@
     return label;
   }
 
+  /* ---------------- 缩放时显示的台账名称 Sprite（已移除：名称仅保留在档案盒本体标签上） ---------------- */
+
   function makePlaqueTexture(text) {
     var canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 64;
@@ -267,16 +270,24 @@
 
   /* ---------------- 场景构建 ---------------- */
   function buildLights() {
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xd3dde8, 0.85));
-    var key = new THREE.DirectionalLight(0xffffff, 1.05);
-    key.position.set(4.5, 8.5, 6.5);
+    // 环境光：暖白 + 冷蓝双色调，更有层次
+    scene.add(new THREE.HemisphereLight(0xf5f8ff, 0xe8ecf2, 0.7));
+    // 主光：右上方暖色
+    var key = new THREE.DirectionalLight(0xfff8ee, 1.1);
+    key.position.set(5, 9, 7);
     scene.add(key);
-    var fill = new THREE.DirectionalLight(0xfff6ea, 0.42);
-    fill.position.set(-4, 3, 7);
+    // 补光：左方冷色
+    var fill = new THREE.DirectionalLight(0xe8f0ff, 0.5);
+    fill.position.set(-5, 4, 8);
     scene.add(fill);
-    var rim = new THREE.DirectionalLight(0xffffff, 0.5);
-    rim.position.set(0, 6, -5);
+    // 轮廓光：后方冷白
+    var rim = new THREE.DirectionalLight(0xffffff, 0.6);
+    rim.position.set(0, 7, -6);
     scene.add(rim);
+    // 底部微弱反光
+    var bounce = new THREE.DirectionalLight(0xf0f4ff, 0.25);
+    bounce.position.set(0, -2, 4);
+    scene.add(bounce);
   }
 
   function buildBackdrop() {
@@ -284,39 +295,48 @@
     c.width = 16; c.height = 512;
     var ctx = c.getContext('2d');
     var grad = ctx.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.55, '#fbfcfe');
-    grad.addColorStop(1, '#eef1f6');
+    grad.addColorStop(0, '#f8faff');
+    grad.addColorStop(0.4, '#f2f6fc');
+    grad.addColorStop(0.75, '#edf1f8');
+    grad.addColorStop(1, '#e6ebf4');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 16, 512);
     var tex = new THREE.CanvasTexture(c);
     tex.encoding = THREE.sRGBEncoding;
     scene.background = tex;
+    scene.fog = new THREE.Fog(0xf0f4fa, 12, 28);
   }
 
   function buildFloor() {
-    var floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), matFloor);
+    var floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), matFloor);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.001;
     scene.add(floor);
 
+    // 地面网格（微妙）
+    var gridHelper = new THREE.GridHelper(40, 40, 0xd0d8e4, 0xe2e8f0);
+    gridHelper.position.y = 0.003;
+    gridHelper.material.transparent = true;
+    gridHelper.material.opacity = 0.35;
+    scene.add(gridHelper);
+
     var c = document.createElement('canvas');
     c.width = 512; c.height = 160;
     var ctx = c.getContext('2d');
-    var grad = ctx.createRadialGradient(256, 80, 10, 256, 80, 250);
-    grad.addColorStop(0, 'rgba(45,65,95,0.30)');
-    grad.addColorStop(0.7, 'rgba(45,65,95,0.12)');
-    grad.addColorStop(1, 'rgba(45,65,95,0)');
+    var grad = ctx.createRadialGradient(256, 70, 10, 256, 70, 280);
+    grad.addColorStop(0, 'rgba(40,60,95,0.28)');
+    grad.addColorStop(0.6, 'rgba(40,60,95,0.10)');
+    grad.addColorStop(1, 'rgba(40,60,95,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 160);
     var st = new THREE.CanvasTexture(c);
     var shadowW = cabinetHalf() * 2 + 1.6;
     var shadowPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(shadowW, 1.5),
+      new THREE.PlaneGeometry(shadowW, 1.8),
       new THREE.MeshBasicMaterial({ map: st, transparent: true, depthWrite: false })
     );
     shadowPlane.rotation.x = -Math.PI / 2;
-    shadowPlane.position.y = 0.002;
+    shadowPlane.position.y = 0.004;
     shadowPlane.userData.isFloorShadow = true;
     scene.add(shadowPlane);
   }
@@ -401,23 +421,7 @@
     bar(glassW, t, 0, yt);       // 上
     bar(t, glassH, -glassW / 2, (yb + yt) / 2);
     bar(t, glassH, glassW / 2, (yb + yt) / 2);
-    if (doorType === 'double') {
-      bar(t, glassH, 0, (yb + yt) / 2); // 中间对开分隔
-    }
-
-    // 把手
-    var hm = matHandle;
-    var handleY = 1.2, hz = zf + 0.02;
-    function handle(x) {
-      var m = roundedBox(0.022, 0.14, 0.025, hm, 0.006);
-      m.position.set(x, handleY, hz);
-      group.add(m);
-    }
-    if (doorType === 'double') {
-      handle(-0.09); handle(0.09);
-    } else {
-      handle(0);
-    }
+    // 对开柜中间不再添加竖直分隔条，避免遮挡正中位置台账名称；玻璃门不再添加把手
   }
 
   /* ---------------- 档案盒 ---------------- */
@@ -436,8 +440,8 @@
     var dims = boxDims(ci, si, count);
     var mat = new THREE.MeshPhongMaterial({
       map: binderTexture(ci, si),
-      shininess: 10,
-      specular: 0x151515,
+      shininess: 18,
+      specular: 0x222222,
       transparent: true, opacity: 1
     });
     var mesh = roundedBox(dims.w, dims.h, dims.d, mat, 0.012);
@@ -493,6 +497,10 @@
     rec.group.children.forEach(function (child) {
       rec.group.remove(child);
       if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
     });
     rec.mesh = roundedBox(dims.w, dims.h, dims.d, rec.mat, 0.012);
     rec.mesh.userData.key = rec.key;
@@ -557,6 +565,10 @@
           scene.remove(g);
           g.traverse(function (o) {
             if (o.geometry) o.geometry.dispose();
+            if (o.material) {
+              if (o.material.map) o.material.map.dispose();
+              o.material.dispose();
+            }
           });
           var idx = boxMeshes.indexOf(rec.mesh);
           if (idx >= 0) boxMeshes.splice(idx, 1);
@@ -584,8 +596,18 @@
     var rec = boxes[key];
     if (!rec) return;
     rec.name = Store.data.cabinets[rec.ci].shelves[rec.si][rec.bi];
+    // 移除旧的标签和名称 sprite（保留 mesh，即第一个子对象）
+    var toRemove = [];
     rec.group.children.forEach(function (child, i) {
-      if (i > 0) { rec.group.remove(child); child.geometry.dispose(); }
+      if (i > 0) toRemove.push(child);
+    });
+    toRemove.forEach(function (child) {
+      rec.group.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
     });
     rec.group.add(boxLabelMesh(rec));
   }
@@ -612,8 +634,8 @@
     var d = rec.dims;
     markerGroup = new THREE.Group();
     var geos = [
-      { s: 1.14, color: 0xFF8A3D, phase: 0, weight: 1 },
-      { s: 1.26, color: 0xFFB477, phase: Math.PI / 2, weight: 2 }
+      { s: 1.12, color: 0xFF7A2E, phase: 0, weight: 1 },
+      { s: 1.24, color: 0xFFB070, phase: Math.PI / 2, weight: 2 }
     ];
     geos.forEach(function (spec) {
       var geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(d.w * spec.s, d.h * spec.s, d.d * spec.s));
@@ -623,16 +645,34 @@
       markerGroup.add(line);
       markerFrames.push(line);
     });
+    // 背后光晕面
+    var glowGeo = new THREE.PlaneGeometry(d.w * 2.2, d.h * 2.2);
+    var glowMat = new THREE.MeshBasicMaterial({
+      color: 0xFF7A2E, transparent: true, opacity: 0.10,
+      depthWrite: false, side: THREE.DoubleSide
+    });
+    var glow = new THREE.Mesh(glowGeo, glowMat);
+    glow.position.z = -d.d / 2 - 0.02;
+    glow.userData.isGlow = true;
+    markerGroup.add(glow);
+    markerFrames.push(glow);
     rec.group.add(markerGroup);
   }
 
   function updateMarker(t) {
     if (!markerGroup) return;
-    markerFrames.forEach(function (line) {
-      var s = line.userData.s;
-      var pulse = 0.5 + 0.5 * Math.sin(t * 5 + line.userData.phase);
-      line.scale.setScalar(1 + pulse * 0.045);
-      line.material.opacity = 0.35 + pulse * 0.6;
+    markerFrames.forEach(function (obj) {
+      if (obj.userData.isGlow) {
+        var pulse = 0.5 + 0.5 * Math.sin(t * 4);
+        obj.material.opacity = 0.06 + pulse * 0.12;
+        var s = 1 + pulse * 0.15;
+        obj.scale.set(s, s, 1);
+      } else {
+        var s = obj.userData.s;
+        var pulse = 0.5 + 0.5 * Math.sin(t * 5 + obj.userData.phase);
+        obj.scale.setScalar(1 + pulse * 0.05);
+        obj.material.opacity = 0.4 + pulse * 0.55;
+      }
     });
   }
 
@@ -642,8 +682,9 @@
     Object.keys(boxes).forEach(function (k) {
       var rec = boxes[k];
       var target = key === k;
-      rec.mat.opacity = target ? 1 : 0.25;
-      rec.mat.emissive.setRGB(target ? 0.22 : 0, target ? 0.22 : 0, target ? 0.22 : 0);
+      rec.mat.opacity = target ? 1 : 0.18;
+      rec.mat.emissive.setHex(target ? 0x553311 : 0x000000);
+      rec.mat.emissiveIntensity = target ? 0.4 : 0;
     });
   }
 
@@ -652,7 +693,8 @@
     Object.keys(boxes).forEach(function (k) {
       var rec = boxes[k];
       rec.mat.opacity = 1;
-      rec.mat.emissive.setRGB(0, 0, 0);
+      rec.mat.emissive.setHex(0x000000);
+      rec.mat.emissiveIntensity = 0;
       if (hoverKey !== k) rec.group.scale.setScalar(1);
     });
   }
@@ -747,7 +789,7 @@
     var startPos = camera.position.clone();
     var startTarget = controls.target.clone();
     var dir = startPos.clone().sub(startTarget).normalize();
-    var dist = Math.min(Math.max(startPos.distanceTo(startTarget) * 0.55, 1.6), 3.2);
+    var dist = 2.4; // 固定聚焦距离，保证每次点击/定位后画面大小一致，不会越点越大
     var endPos = boxPos.clone().add(new THREE.Vector3(0, 0.18, 0)).add(dir.clone().multiplyScalar(dist));
     if (endPos.y < 0.4) endPos.y = 0.4;
     var endTarget = boxPos.clone();
@@ -923,11 +965,11 @@
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controls.enablePan = false;
-      // 禁用缩放（含双击缩放）：避免“双击柜子空白位置”时相机自动拉近放大；
-      // 聚焦/放大统一由“点击台账盒子”的飞行定位动画完成。
-      controls.enableZoom = false;
-      controls.minDistance = 1.5;
-      controls.maxDistance = 60;
+      // 启用双手捏合缩放：用户可双手放大查看台账，近距离时显示台账名称标签
+      controls.enableZoom = true;
+      controls.zoomSpeed = 0.8;
+      controls.minDistance = 1.2;
+      controls.maxDistance = 20;
       controls.minPolarAngle = 0.25;
       controls.maxPolarAngle = Math.PI / 2 - 0.15;
       controls.minAzimuthAngle = -0.9;
@@ -984,7 +1026,13 @@
         if (rec.bi >= count) {
           var g = rec.group;
           scene.remove(g);
-          g.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
+          g.traverse(function (o) {
+            if (o.geometry) o.geometry.dispose();
+            if (o.material) {
+              if (o.material.map) o.material.map.dispose();
+              o.material.dispose();
+            }
+          });
           var idx = boxMeshes.indexOf(rec.mesh);
           if (idx >= 0) boxMeshes.splice(idx, 1);
           if (markerKey === key) clearMarker();

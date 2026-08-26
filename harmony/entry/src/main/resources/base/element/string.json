@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "台账查找主模块"
+    },
+    {
+      "name": "ability_desc",
+      "value": "台账三维查看"
+    },
+    {
+      "name": "ability_label",
+      "value": "台账查找"
+    }
+  ]
+}
