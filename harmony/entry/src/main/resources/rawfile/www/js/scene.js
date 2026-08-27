@@ -246,62 +246,7 @@
     return label;
   }
 
-  /* ---------------- 缩放时显示的台账名称 Sprite ---------------- */
-  function makeNameSprite(text) {
-    var fontSize = 30;
-    var padX = 14, padY = 8;
-    var measure = document.createElement('canvas').getContext('2d');
-    measure.font = 'bold ' + fontSize + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
-    var tw = Math.ceil(measure.measureText(text || '').width);
-    var cw = Math.max(48, tw + padX * 2);
-    var ch = fontSize + padY * 2;
-    var canvas = document.createElement('canvas');
-    canvas.width = cw; canvas.height = ch;
-    var ctx = canvas.getContext('2d');
-    roundRectPath(ctx, 1, 1, cw - 2, ch - 2, 8);
-    ctx.fillStyle = 'rgba(79,125,249,0.92)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold ' + fontSize + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text || '', cw / 2, ch / 2 + 1);
-    var tex = new THREE.CanvasTexture(canvas);
-    tex.minFilter = THREE.LinearFilter;
-    tex.encoding = THREE.sRGBEncoding;
-    var mat = new THREE.SpriteMaterial({
-      map: tex, transparent: true, opacity: 0,
-      depthTest: true, depthWrite: false
-    });
-    var sprite = new THREE.Sprite(mat);
-    var worldH = 0.15;
-    sprite.scale.set(worldH * (cw / ch), worldH, 1);
-    sprite.renderOrder = 20;
-    sprite.visible = false;
-    return sprite;
-  }
-
-  var _labelVec = new THREE.Vector3();
-  function updateNameLabels() {
-    if (!camera) return;
-    var SHOW_DIST = 3.0, HIDE_DIST = 4.6;
-    Object.keys(boxes).forEach(function (key) {
-      var rec = boxes[key];
-      var sp = rec.nameSprite;
-      if (!sp) return;
-      rec.group.getWorldPosition(_labelVec);
-      var dist = camera.position.distanceTo(_labelVec);
-      var op;
-      if (dist <= SHOW_DIST) op = 1;
-      else if (dist >= HIDE_DIST) op = 0;
-      else op = 1 - (dist - SHOW_DIST) / (HIDE_DIST - SHOW_DIST);
-      sp.material.opacity = op;
-      sp.visible = op > 0.01;
-    });
-  }
+  /* ---------------- 缩放时显示的台账名称 Sprite（已移除：名称仅保留在档案盒本体标签上） ---------------- */
 
   function makePlaqueTexture(text) {
     var canvas = document.createElement('canvas');
@@ -476,23 +421,7 @@
     bar(glassW, t, 0, yt);       // 上
     bar(t, glassH, -glassW / 2, (yb + yt) / 2);
     bar(t, glassH, glassW / 2, (yb + yt) / 2);
-    if (doorType === 'double') {
-      bar(t, glassH, 0, (yb + yt) / 2); // 中间对开分隔
-    }
-
-    // 把手
-    var hm = matHandle;
-    var handleY = 1.2, hz = zf + 0.02;
-    function handle(x) {
-      var m = roundedBox(0.022, 0.14, 0.025, hm, 0.006);
-      m.position.set(x, handleY, hz);
-      group.add(m);
-    }
-    if (doorType === 'double') {
-      handle(-0.09); handle(0.09);
-    } else {
-      handle(0);
-    }
+    // 对开柜中间不再添加竖直分隔条，避免遮挡正中位置台账名称；玻璃门不再添加把手
   }
 
   /* ---------------- 档案盒 ---------------- */
@@ -523,17 +452,12 @@
     group.add(mesh);
     group.add(boxLabelMesh({ dims: dims, name: name }));
 
-    var nameSprite = makeNameSprite(name);
-    nameSprite.position.set(0, dims.h * 0.52, dims.d / 2 + 0.08);
-    group.add(nameSprite);
-
     var x = boxCenterX(ci, bi, count);
     var rec = {
       key: key, ci: ci, si: si, bi: bi, name: name,
       group: group, mesh: mesh, mat: mat, color: boxColor(ci, si),
       basePos: new THREE.Vector3(x, BOX_CENTERS[si], FRONT_Z - dims.d / 2),
-      dims: dims,
-      nameSprite: nameSprite
+      dims: dims
     };
     group.position.copy(rec.basePos);
     return rec;
@@ -584,12 +508,6 @@
     boxMeshes.push(rec.mesh);
 
     rec.group.add(boxLabelMesh(rec));
-
-    // 重建名称 sprite
-    var nameSprite = makeNameSprite(rec.name);
-    nameSprite.position.set(0, dims.h * 0.52, dims.d / 2 + 0.08);
-    rec.group.add(nameSprite);
-    rec.nameSprite = nameSprite;
   }
 
   function animateLayout(animate) {
@@ -692,10 +610,6 @@
       }
     });
     rec.group.add(boxLabelMesh(rec));
-    var nameSprite = makeNameSprite(rec.name);
-    nameSprite.position.set(0, rec.dims.h * 0.52, rec.dims.d / 2 + 0.08);
-    rec.group.add(nameSprite);
-    rec.nameSprite = nameSprite;
   }
 
   /* ---------------- 标记框 ---------------- */
@@ -827,6 +741,40 @@
   }
 
   /* ---------------- 相机 ---------------- */
+  // 放大查看时拖拽=平移（往右移显示右侧架子、往左移显示左侧架子）；
+  // 缩略总览时拖拽=旋转柜子，右键/双指可平移。
+  var PAN_MODE_DIST = 3.5;   // 相机到目标距离小于此值视为“放大查看”
+  var panModeOn = false;
+  function panModeActive() {
+    var d = camera ? camera.position.distanceTo(controls.target) : 99;
+    return d < PAN_MODE_DIST;
+  }
+  function updateGestures() {
+    var pan = panModeActive();
+    if (pan === panModeOn) return;
+    panModeOn = pan;
+    if (pan) {
+      // 放大查看：左键/单指平移，右键/双指旋转+缩放
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      controls.touches.ONE = THREE.TOUCH.PAN;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+    } else {
+      // 缩略总览：左键/单指旋转，右键/双指缩放+平移
+      controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+      controls.touches.ONE = THREE.TOUCH.ROTATE;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+    }
+  }
+  // 平移边界：避免把整排柜子移出视野（按整排半宽限制，垂直方向也限位）
+  function clampPan() {
+    var t = controls.target;
+    var lim = Math.max(rowHalf * 0.95, 1.6);
+    t.x = Math.max(-lim, Math.min(lim, t.x));
+    t.y = Math.max(0.35, Math.min(2.3, t.y));
+  }
+
   function fitParams() {
     var aspect = camera ? camera.aspect : 16 / 10;
     var vHalf = Math.tan(THREE.MathUtils.degToRad(CAM_FOV) / 2);
@@ -875,7 +823,7 @@
     var startPos = camera.position.clone();
     var startTarget = controls.target.clone();
     var dir = startPos.clone().sub(startTarget).normalize();
-    var dist = Math.min(Math.max(startPos.distanceTo(startTarget) * 0.55, 1.6), 3.2);
+    var dist = 2.4; // 固定聚焦距离，保证每次点击/定位后画面大小一致，不会越点越大
     var endPos = boxPos.clone().add(new THREE.Vector3(0, 0.18, 0)).add(dir.clone().multiplyScalar(dist));
     if (endPos.y < 0.4) endPos.y = 0.4;
     var endTarget = boxPos.clone();
@@ -930,7 +878,8 @@
     }
     updateMarker(t);
     controls.update();
-    updateNameLabels();
+    updateGestures();
+    clampPan();
     renderer.render(scene, camera);
     if (onFrameCb) onFrameCb();
   }
@@ -1041,8 +990,9 @@
       camera = new THREE.PerspectiveCamera(CAM_FOV, el.clientWidth / el.clientHeight, 0.1, 100);
       camera.position.set(0, 1.7, 8);
 
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+      // 平板/手机高 DPI 下 2x 渲染开销大，拖动会卡；上限 1.5x 明显更流畅（清晰度差异很小）
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       renderer.setSize(el.clientWidth, el.clientHeight);
       renderer.outputEncoding = THREE.sRGBEncoding;
       el.appendChild(renderer.domElement);
@@ -1051,7 +1001,9 @@
       controls.target.set(0, 1.12, 0);
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
-      controls.enablePan = false;
+      // 开启平移：放大查看时用拖拽平移柜子（而非转动柜子）
+      controls.enablePan = true;
+      controls.panSpeed = 0.6;
       // 启用双手捏合缩放：用户可双手放大查看台账，近距离时显示台账名称标签
       controls.enableZoom = true;
       controls.zoomSpeed = 0.8;
@@ -1061,6 +1013,7 @@
       controls.maxPolarAngle = Math.PI / 2 - 0.15;
       controls.minAzimuthAngle = -0.9;
       controls.maxAzimuthAngle = 0.9;
+      updateGestures();
 
       buildLights();
       buildBackdrop();

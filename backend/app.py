@@ -19,7 +19,7 @@ from backend.routers import files as files_router
 from backend.routers import users as users_router
 from backend.security import client_ip, hash_password, ip_allowed, request_allowed, verify_password
 
-VERSION = "4.0.0"
+VERSION = "4.0.1"
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",

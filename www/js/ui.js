@@ -201,6 +201,7 @@
     await Store.logout();
     stopCatalogPolling();
     if (els.searchBar) els.searchBar.classList.add('hidden');
+    hideDetailBtn();
     Scene3D.rebuildAll(false);
     closeModal();
     renderUserUI();
@@ -303,6 +304,7 @@
     if (!info) return;
     cancelLocate(false);
     detailKey = key;
+    showDetailBtn();
     // 若尚未聚焦到该盒子（如外部直接调用），先执行飞行动画
     if (focusKey !== key) {
       focusKey = key;
@@ -318,9 +320,17 @@
     cancelLocate(false);
     cancelBoxFocus(false);
     focusKey = key;
+    showDetailBtn();
     Scene3D.flyToBox(key, 1.0, function () {
       if (focusKey === key) Scene3D.setFocusBox(key);
     });
+  }
+
+  function showDetailBtn() {
+    if (els.btnBoxDetail) els.btnBoxDetail.hidden = false;
+  }
+  function hideDetailBtn() {
+    if (els.btnBoxDetail) els.btnBoxDetail.hidden = true;
   }
 
   function showDetailModal(ci, si, bi) {
@@ -369,9 +379,9 @@
         '<div class="file-meta">' + formatSize(f.size) + ' · ' + fileKindLabel(kind) + '</div>' +
         '</div>' +
         '<div class="file-actions">' +
-        '<button class="file-btn" data-act="view" data-id="' + f.id + '" type="button">' + ICON_EYE + '查看</button>' +
+        '<button class="file-btn" data-act="view" data-id="' + f.id + '" type="button">' + ICON_EYE + '<span>查看</span></button>' +
         (f.downloadable
-          ? '<a class="file-btn" href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener" download="' + escapeHtml(f.originalName) + '">' + ICON_DOWNLOAD + '</a>'
+          ? '<a class="file-btn" href="' + escapeHtml(f.url) + '" download="' + escapeHtml(f.originalName) + '" title="下载到设备">' + ICON_DOWNLOAD + '<span>下载</span></a>'
           : '<span class="file-btn readonly-tag" title="只读用户仅可预览，不能下载原始文件">仅预览</span>') +
         '</div>' +
         '</div>';
@@ -409,7 +419,7 @@
     } else {
       inner = '<div class="file-other"><div class="ficon">📄</div><p>该格式无法在线预览。</p>' +
         (f.downloadable
-          ? '<a class="btn btn-primary" href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener" download="' + escapeHtml(f.originalName) + '" style="margin-top:8px">下载查看</a>'
+          ? '<a class="btn btn-primary" href="' + escapeHtml(f.url) + '" download="' + escapeHtml(f.originalName) + '" style="margin-top:8px">下载查看</a>'
           : '<p style="color:var(--text-3)">只读用户仅可预览，如需下载请联系管理员</p>') +
         '</div>';
     }
@@ -465,7 +475,7 @@
         '<div class="modal-actions" style="justify-content:center;margin-top:10px">' +
         '<button class="btn btn-ghost" id="pdfRetry" type="button">重试</button>' +
         (f.downloadable
-          ? '<a class="btn btn-primary" href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener" download="' + escapeHtml(f.originalName) + '" style="margin-left:8px">下载查看</a>'
+          ? '<a class="btn btn-primary" href="' + escapeHtml(f.url) + '" download="' + escapeHtml(f.originalName) + '" style="margin-left:8px">下载查看</a>'
           : '') +
         '</div></div>';
       var rb = $('#pdfRetry');
@@ -704,6 +714,7 @@
   function cancelBoxFocus(restore) {
     if (focusTimer) { clearTimeout(focusTimer); focusTimer = null; }
     if (focusKey) { Scene3D.clearFocusBox(); focusKey = null; hideFoundTag(); }
+    hideDetailBtn();
     if (restore) Scene3D.flyToOverview(1.0);
   }
 
@@ -713,7 +724,7 @@
     if (!info) return;
     var p = Scene3D.project(key);
     if (!p || !p.visible) { els.boxTip.hidden = true; return; }
-    var hint = (focusKey === key) ? '再次点击查看详情' : '点击聚焦放大';
+    var hint = (focusKey === key) ? '再次点击收回' : '点击聚焦放大';
     els.boxTip.innerHTML = escapeHtml(info.name) +
       '<small>' + (info.ci + 1) + '号柜 · 第 ' + layerNo(info.si) + ' 层 · ' + hint + '</small>';
     els.boxTip.style.left = p.x + 'px';
@@ -725,8 +736,8 @@
     if (!Store.user()) { showLogin(); return; }
     if (detailKey) return; // 详情弹窗已打开，忽略场景点击
     if (focusKey === key) {
-      // 再次点击同一个已聚焦的台账 → 显示详情
-      openBoxDetail(key);
+      // 再次点击同一个已聚焦的台账 → 收回（台账恢复原大小，镜头保持在放大界面）
+      cancelBoxFocus(false);
     } else {
       // 首次点击 → 聚焦放大（与查找定位相同的飞行动画）
       focusBoxFirstTime(key);
@@ -780,6 +791,7 @@
     els.btnSearch = $('#btnSearch');
     els.btnVoice = $('#btnVoice');
     els.btnClearSearch = $('#btnClearSearch');
+    els.btnBoxDetail = $('#btnBoxDetail');
     els.boxTip = $('#boxTip');
     els.toastWrap = $('#toastWrap');
     els.overlayRoot = $('#overlayRoot');
@@ -816,6 +828,14 @@
       setTimeout(hideSuggest, 200);
     });
     els.btnVoice.addEventListener('click', toggleVoice);
+
+    if (els.btnBoxDetail) {
+      els.btnBoxDetail.addEventListener('click', function () {
+        if (!Store.user()) { showLogin(); return; }
+        if (detailKey) return; // 详情弹窗已打开
+        if (focusKey) openBoxDetail(focusKey);
+      });
+    }
 
     Scene3D.onBoxHover(function (key) {
       if (key) showHoverTip(key);

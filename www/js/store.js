@@ -63,6 +63,13 @@
           err.payload = payload;
           throw err;
         }
+        // 后端部分失败响应（如登录失败）为 HTTP 200 + ok:false，统一按错误抛出
+        if (payload && payload.ok === false) {
+          var err2 = new Error(payload.error || payload.detail || ('HTTP ' + res.status));
+          err2.status = res.status;
+          err2.payload = payload;
+          throw err2;
+        }
         return payload;
       });
     });

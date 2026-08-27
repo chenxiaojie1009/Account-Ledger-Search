@@ -990,8 +990,9 @@
       camera = new THREE.PerspectiveCamera(CAM_FOV, el.clientWidth / el.clientHeight, 0.1, 100);
       camera.position.set(0, 1.7, 8);
 
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+      // 平板/手机高 DPI 下 2x 渲染开销大，拖动会卡；上限 1.5x 明显更流畅（清晰度差异很小）
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       renderer.setSize(el.clientWidth, el.clientHeight);
       renderer.outputEncoding = THREE.sRGBEncoding;
       el.appendChild(renderer.domElement);

@@ -104,6 +104,31 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 #scene canvas { display: block; }
 
 /* ============================================================
+   台账聚焦后顶部「查看详情」按钮
+   ============================================================ */
+.btn-box-detail[hidden] { display: none; }
+
+.btn-box-detail {
+  position: fixed; top: max(16px, env(safe-area-inset-top)); left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex; align-items: center; gap: 7px;
+  height: 42px; padding: 0 20px;
+  border: none; border-radius: 21px;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  color: #fff; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+  box-shadow: var(--shadow-accent);
+  transition: all var(--dur) var(--ease-spring);
+  animation: detail-btn-in .32s var(--ease-spring);
+}
+.btn-box-detail:hover { transform: translateX(-50%) translateY(-2px); box-shadow: 0 8px 24px var(--accent-glow); }
+.btn-box-detail:active { transform: translateX(-50%) scale(.95); }
+.btn-box-detail .ic { width: 16px; height: 16px; }
+@keyframes detail-btn-in {
+  from { transform: translateX(-50%) translateY(-14px) scale(.9); opacity: 0; }
+  to { transform: translateX(-50%); opacity: 1; }
+}
+/* ============================================================
    顶部按钮
    ============================================================ */
 .btn-home, .btn-admin {
@@ -488,6 +513,8 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 .file-btn:hover { filter: brightness(.95); transform: translateY(-1px); }
 .file-btn.danger { background: var(--danger-soft); color: var(--danger); }
 .file-btn:active { transform: scale(.95); }
+.file-btn { flex-shrink: 0; white-space: nowrap; }
+.file-btn .ic { width: 15px; height: 15px; }
 
 /* ============================================================
    文件查看器
@@ -550,7 +577,7 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 /* 横屏适配 */
 @media (max-height: 500px) and (orientation: landscape) {
   .search-bar { bottom: 10px; }
-  .btn-home, .btn-admin { top: 10px; }
+  .btn-home, .btn-admin, .btn-box-detail { top: 10px; }
 }
 
 /* ============================================================

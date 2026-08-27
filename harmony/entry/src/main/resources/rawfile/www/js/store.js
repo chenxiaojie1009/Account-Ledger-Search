@@ -1,5 +1,7 @@
 /* 台账查找 - 数据层（连接服务器数据库）
  * 前端统一从服务器 API 获取/保存目录，不再写入 localStorage。
+ * 安全说明：不再保存密码；文件下载地址由服务器签发“短时效票据”，
+ * 主登录令牌不会出现在 URL 中。
  */
 (function () {
   'use strict';
@@ -15,6 +17,7 @@
   var data = { cabinets: [] };
   var user = null;
   var token = loadToken();
+  var _catalogJson = null; // 最近一次目录 JSON 快照，用于检测后台配置变更
 
   function loadToken() {
     try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
@@ -55,10 +58,17 @@
         var payload = null;
         try { payload = text ? JSON.parse(text) : {}; } catch (e) { payload = {}; }
         if (!res.ok) {
-          var err = new Error(payload.error || ('HTTP ' + res.status));
+          var err = new Error(payload.error || payload.detail || ('HTTP ' + res.status));
           err.status = res.status;
           err.payload = payload;
           throw err;
+        }
+        // 后端部分失败响应（如登录失败）为 HTTP 200 + ok:false，统一按错误抛出
+        if (payload && payload.ok === false) {
+          var err2 = new Error(payload.error || payload.detail || ('HTTP ' + res.status));
+          err2.status = res.status;
+          err2.payload = payload;
+          throw err2;
         }
         return payload;
       });
@@ -72,7 +82,18 @@
   async function loadCatalog() {
     var r = await request('GET', '/api/catalog');
     setCatalog(r.cabinets);
+    _catalogJson = JSON.stringify(r.cabinets);
     return data;
+  }
+
+  // 轮询后端目录，检测到配置（颜色/名称/数量等）变化返回 true，供前端自动刷新场景
+  async function pollCatalog() {
+    var r = await request('GET', '/api/catalog');
+    var json = JSON.stringify(r.cabinets);
+    var changed = json !== _catalogJson;
+    setCatalog(r.cabinets);
+    _catalogJson = json;
+    return changed;
   }
 
   async function init() {
@@ -80,8 +101,8 @@
     try {
       var me = await request('GET', '/api/me');
       user = me.user;
-      await loadCatalog();
-      return { loggedIn: true, user: user };
+      if (!user.mustChangePassword) await loadCatalog();
+      return { loggedIn: true, user: user, mustChangePassword: !!user.mustChangePassword };
     } catch (e) {
       saveToken('');
       user = null;
@@ -93,8 +114,15 @@
     var r = await request('POST', '/api/login', { username: username, password: password });
     saveToken(r.token);
     user = r.user;
-    await loadCatalog();
-    return user;
+    // 强制改密状态下目录接口会被服务端拦截，先交给界面完成改密
+    if (!user.mustChangePassword) await loadCatalog();
+    return { user: user, mustChangePassword: !!user.mustChangePassword };
+  }
+
+  async function changePassword(oldPassword, newPassword) {
+    var r = await request('POST', '/api/change-password', { oldPassword: oldPassword, newPassword: newPassword });
+    if (user) user.mustChangePassword = false;
+    return r;
   }
 
   async function logout() {
@@ -216,6 +244,7 @@
     init: init,
     login: login,
     logout: logout,
+    changePassword: changePassword,
     loadCatalog: loadCatalog,
     setShelfCount: setShelfCount,
     renameBox: renameBox,
