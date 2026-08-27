@@ -456,12 +456,27 @@
       return base.replace('/download', '/preview').replace(/[?&]name=[^&]*/, '') + '&page=' + p;
     }
     function pdfFail() {
-      // 后端不支持 PDF 分页预览时给出提示（如 Node 备选后端）
+      // 图片加载失败：可能是服务器未运行、渲染失败或预览票据过期；
+      // 给出准确提示并提供重试 / 下载，而不是笼统归咎“后端不支持”。
       var box = $('.pdf-viewer');
-      if (box) {
-        box.innerHTML = '<div class="file-other"><div class="ficon">📄</div><p>当前后端不支持 PDF 在线预览' +
-          (f.downloadable ? '，请下载查看。' : '，只读用户无法下载，请联系管理员。') + '</p></div>';
-      }
+      if (!box) return;
+      box.innerHTML = '<div class="file-other"><div class="ficon">📄</div>' +
+        '<p>PDF 预览加载失败。可能原因：服务器未运行、页面渲染超时，或预览票据已过期（约 10 分钟）。</p>' +
+        '<div class="modal-actions" style="justify-content:center;margin-top:10px">' +
+        '<button class="btn btn-ghost" id="pdfRetry" type="button">重试</button>' +
+        (f.downloadable
+          ? '<a class="btn btn-primary" href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener" download="' + escapeHtml(f.originalName) + '" style="margin-left:8px">下载查看</a>'
+          : '') +
+        '</div></div>';
+      var rb = $('#pdfRetry');
+      if (rb) rb.addEventListener('click', function () {
+        // 重建分页查看器并重试；若票据已过期，重新打开文件详情即可获得新票据
+        box.innerHTML = '<div class="pdf-nav"><button type="button" id="pdfPrev">上一页</button>' +
+          '<span id="pdfPage">加载中…</span>' +
+          '<button type="button" id="pdfNext">下一页</button></div>' +
+          '<img class="pdf-img" id="pdfImg" alt="">';
+        initPdfViewer(f);
+      });
     }
     function load() {
       img.onerror = function () { pdfFail(); };

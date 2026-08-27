@@ -226,15 +226,29 @@ def _watermark_render(f: File, p: Path, page: int, user: User) -> bytes:
 
 def _stamp_page(pg, stamp: str):
     """在页面底部与中央斜向压上“内部资料”水印"""
+    import math
     rect = pg.rect
     try:
         pg.insert_text((36, rect.height - 36), stamp, fontsize=14,
                        color=(0.62, 0.62, 0.62), fontname="china-s")
+        # 中央斜向水印：PyMuPDF 的 insert_text 的 rotate 参数只接受 0/90/180/270，
+        # 传 45 会抛 ValueError('bad rotate value')，导致整段水印退化为英文；
+        # 改用 morph（旋转矩阵）实现真正的 45° 斜向压印。
+        rad = math.radians(45)
+        rot = fitz.Matrix(math.cos(rad), math.sin(rad), -math.sin(rad), math.cos(rad), 0, 0)
         pg.insert_text((rect.width / 2 - 180, rect.height / 2), stamp, fontsize=18,
-                       color=(0.75, 0.75, 0.75), rotate=45, fontname="china-s")
+                       color=(0.75, 0.75, 0.75), fontname="china-s",
+                       morph=(fitz.Point(rect.width / 2, rect.height / 2), rot))
     except Exception:
-        # 某些字体缺失时退化为英文水印
-        pg.insert_text((36, rect.height - 36), "INTERNAL USE ONLY", fontsize=14, color=(0.62, 0.62, 0.62))
+        # 兜底（如极旧版 PyMuPDF 或打包环境不支持 morph 时）：
+        # 底部仍压中文水印，并在页面中部叠一行横向中文水印，保证“内部资料”可见。
+        try:
+            pg.insert_text((36, rect.height - 36), stamp, fontsize=14,
+                           color=(0.62, 0.62, 0.62), fontname="china-s")
+            pg.insert_text((rect.width / 2 - 150, rect.height / 2), stamp, fontsize=16,
+                           color=(0.75, 0.75, 0.75), fontname="china-s")
+        except Exception:
+            pg.insert_text((36, rect.height - 36), "INTERNAL USE ONLY", fontsize=14, color=(0.62, 0.62, 0.62))
 
 
 @router.get("/{file_id}/pdf-info")

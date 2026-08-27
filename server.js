@@ -116,6 +116,39 @@ function sendJSON(res, code, obj) {
 function sendError(res, code, msg) {
   sendJSON(res, code, { ok: false, error: msg });
 }
+
+// ---------------- PDF 渲染（可选：mupdf 纯 WASM，无本地编译） ----------------
+// Node 备选后端通过 mupdf 提供 PDF 分页转图预览；未安装 mupdf 时自动降级为旧行为。
+let _mupdfMod = null;
+let _mupdfLoadErr = null;
+async function loadMupdf() {
+  if (_mupdfMod || _mupdfLoadErr) return _mupdfMod;
+  try {
+    // mupdf 为 ESM-only 包，需用动态 import
+    _mupdfMod = await import('mupdf');
+  } catch (e) {
+    _mupdfLoadErr = e;
+  }
+  return _mupdfMod;
+}
+function renderPdfPageToPng(mu, buf, pageIndex) {
+  const doc = mu.Document.openDocument(buf, 'application/pdf');
+  try {
+    const total = doc.countPages();
+    const idx = Math.max(0, Math.min(pageIndex, total - 1));
+    const page = doc.loadPage(idx);
+    const pix = page.toPixmap(mu.Matrix.scale(1.5, 1.5), mu.ColorSpace.DeviceRGB, false, true);
+    const png = Buffer.from(pix.asPNG());
+    return { total, png };
+  } finally {
+    try { doc.destroy(); } catch (e) { /* ignore */ }
+  }
+}
+function pdfPageCount(mu, buf) {
+  const doc = mu.Document.openDocument(buf, 'application/pdf');
+  try { return doc.countPages(); }
+  finally { try { doc.destroy(); } catch (e) { /* ignore */ } }
+}
 function readBody(req, limit) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -766,7 +799,7 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  // 图片预览（Node 版不做水印渲染；PDF 请使用 Python 版后端以获得加水印预览）
+  // 图片 / PDF 预览（Node 版图片预览不做水印渲染；PDF 用 mupdf 分页转图，未安装时降级提示）
   if (parts[0] === 'files' && parts[1] && parts[2] === 'preview' && method === 'GET') {
     const q = getQuery(url);
     const got = verifyTicket(q.ticket);
@@ -777,11 +810,31 @@ async function handleApi(req, res, url) {
     const isImage = /^image\//.test(file.mime || '') && file.mime !== 'image/svg+xml';
     const isPdf = file.mime === 'application/pdf' || path.extname(file.original_name).toLowerCase() === '.pdf';
     if (!isImage && !isPdf) return sendError(res, 400, '仅支持图片 / PDF 在线预览');
-    if (isPdf) return sendError(res, 400, 'Node 版后端不支持 PDF 分页预览，请使用 Python 版后端或下载查看');
     const p = path.join(UPLOAD_DIR, file.stored_name);
     if (!fs.existsSync(p)) return sendError(res, 404, '文件不存在');
     audit('file_view', user, '预览 ' + file.original_name + '（' + file.id + '）', clientIp(req));
     const origin = req.headers.origin && originAllowed(req.headers.origin) ? req.headers.origin : null;
+    if (isPdf) {
+      const mu = await loadMupdf();
+      if (!mu) return sendError(res, 400, 'Node 版后端缺少 PDF 渲染组件（未安装 mupdf），请使用 Python 版后端或下载查看');
+      try {
+        const page = Math.max(1, parseInt(q.page, 10) || 1);
+        const { total, png } = renderPdfPageToPng(mu, fs.readFileSync(p), page - 1);
+        const extra = Math.min(page, total);
+        res.writeHead(200, {
+          'Content-Type': 'image/png',
+          'X-Page': String(extra),
+          'X-Page-Count': String(total),
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+          ...(origin ? { 'Access-Control-Allow-Origin': origin } : {})
+        });
+        res.end(png);
+        return;
+      } catch (e) {
+        return sendError(res, 400, 'PDF 预览渲染失败：' + String((e && e.message) || e).slice(0, 120));
+      }
+    }
     res.writeHead(200, {
       'Content-Type': file.mime || 'image/png',
       'Content-Disposition': "inline; filename*=UTF-8''" + encodeURIComponent(file.original_name),
@@ -802,13 +855,20 @@ async function handleApi(req, res, url) {
     if (!(file.mime === 'application/pdf' || path.extname(file.original_name).toLowerCase() === '.pdf')) {
       return sendError(res, 400, '仅支持 PDF');
     }
-    // 简易页数探测（无 PyMuPDF 时使用；精确预览请用 Python 后端）
+    const p = path.join(UPLOAD_DIR, file.stored_name);
+    if (!fs.existsSync(p)) return sendError(res, 404, '文件不存在');
+    // 优先用 mupdf 精确读取页数；未安装时退回简易页数探测
     let count = 1;
-    try {
-      const buf = fs.readFileSync(path.join(UPLOAD_DIR, file.stored_name));
-      const m = buf.toString('latin1').match(/\/Type\s*\/Page\b/g);
-      count = Math.max(1, m ? m.length : 1);
-    } catch (e) { /* ignore */ }
+    const mu = await loadMupdf();
+    if (mu) {
+      try { count = pdfPageCount(mu, fs.readFileSync(p)); } catch (e) { /* ignore */ }
+    } else {
+      try {
+        const buf = fs.readFileSync(p);
+        const m = buf.toString('latin1').match(/\/Type\s*\/Page\b/g);
+        count = Math.max(1, m ? m.length : 1);
+      } catch (e) { /* ignore */ }
+    }
     return sendJSON(res, 200, { ok: true, pageCount: count });
   }
 

@@ -741,6 +741,40 @@
   }
 
   /* ---------------- 相机 ---------------- */
+  // 放大查看时拖拽=平移（往右移显示右侧架子、往左移显示左侧架子）；
+  // 缩略总览时拖拽=旋转柜子，右键/双指可平移。
+  var PAN_MODE_DIST = 3.5;   // 相机到目标距离小于此值视为“放大查看”
+  var panModeOn = false;
+  function panModeActive() {
+    var d = camera ? camera.position.distanceTo(controls.target) : 99;
+    return d < PAN_MODE_DIST;
+  }
+  function updateGestures() {
+    var pan = panModeActive();
+    if (pan === panModeOn) return;
+    panModeOn = pan;
+    if (pan) {
+      // 放大查看：左键/单指平移，右键/双指旋转+缩放
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      controls.touches.ONE = THREE.TOUCH.PAN;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+    } else {
+      // 缩略总览：左键/单指旋转，右键/双指缩放+平移
+      controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+      controls.touches.ONE = THREE.TOUCH.ROTATE;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+    }
+  }
+  // 平移边界：避免把整排柜子移出视野（按整排半宽限制，垂直方向也限位）
+  function clampPan() {
+    var t = controls.target;
+    var lim = Math.max(rowHalf * 0.95, 1.6);
+    t.x = Math.max(-lim, Math.min(lim, t.x));
+    t.y = Math.max(0.35, Math.min(2.3, t.y));
+  }
+
   function fitParams() {
     var aspect = camera ? camera.aspect : 16 / 10;
     var vHalf = Math.tan(THREE.MathUtils.degToRad(CAM_FOV) / 2);
@@ -844,6 +878,8 @@
     }
     updateMarker(t);
     controls.update();
+    updateGestures();
+    clampPan();
     renderer.render(scene, camera);
     if (onFrameCb) onFrameCb();
   }
@@ -964,7 +1000,9 @@
       controls.target.set(0, 1.12, 0);
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
-      controls.enablePan = false;
+      // 开启平移：放大查看时用拖拽平移柜子（而非转动柜子）
+      controls.enablePan = true;
+      controls.panSpeed = 0.6;
       // 启用双手捏合缩放：用户可双手放大查看台账，近距离时显示台账名称标签
       controls.enableZoom = true;
       controls.zoomSpeed = 0.8;
@@ -974,6 +1012,7 @@
       controls.maxPolarAngle = Math.PI / 2 - 0.15;
       controls.minAzimuthAngle = -0.9;
       controls.maxAzimuthAngle = 0.9;
+      updateGestures();
 
       buildLights();
       buildBackdrop();
