@@ -49,7 +49,7 @@ def rename(body: RenameIn, request: Request, user: User = Depends(require_role("
     err = validate_position(db, body.cabinetId, body.shelf, body.slot)
     if err:
         return {"ok": False, "error": err}
-    rename_box(db, body.cabinetId, body.shelf, body.slot, body.name)
+    rename_box(db, body.cabinetId, body.shelf, body.slot, body.name, body.code)
     audit(db, user, "catalog_update",
           f"柜{body.cabinetId + 1} 第{config.SHELF_COUNT - body.shelf}层 第{body.slot + 1}个 重命名",
           client_ip(request))
@@ -62,7 +62,7 @@ def update_catalog(body: UpdateCatalogIn, request: Request, user: User = Depends
     err = validate_position(db, body.cabinetId, 0)
     if err:
         return {"ok": False, "error": err}
-    update_catalog_shelf(db, body.cabinetId, body.shelves)
+    update_catalog_shelf(db, body.cabinetId, body.shelves, body.codes)
     audit(db, user, "catalog_update", f"柜{body.cabinetId + 1} 批量保存名称", client_ip(request))
     return _catalog_resp(db)
 

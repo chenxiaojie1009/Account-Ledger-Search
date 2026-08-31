@@ -206,7 +206,7 @@
     ctx.closePath();
   }
 
-  function makeLabelTexture(text, aspect) {
+  function makeLabelTexture(text, code, aspect) {
     var cw = 256;
     var ch = Math.max(320, Math.min(1024, Math.round(cw * aspect)));
     var canvas = document.createElement('canvas');
@@ -218,15 +218,53 @@
     ctx.strokeStyle = 'rgba(150,128,92,0.5)';
     ctx.lineWidth = 5;
     ctx.stroke();
+
+    var FONT_FAMILY = '"Microsoft YaHei", "PingFang SC", sans-serif';
+    var padTop = 18, padBot = 18, padLR = 16;
+    var top = padTop;
+
+    // 文档编号：横向排列在名称上方（双重名称：编号 + 名称）
+    var codeStr = code ? String(code).trim() : '';
+    if (codeStr) {
+      var numH = Math.max(46, Math.min(92, Math.round(ch * 0.16)));
+      var maxW = cw - padLR * 2 - 8;
+      var numFont = Math.floor(Math.min(cw * 0.46, numH * 0.66));
+      ctx.font = 'bold ' + numFont + 'px ' + FONT_FAMILY;
+      var mw = ctx.measureText(codeStr).width;
+      if (mw > maxW) numFont = Math.max(13, Math.floor(numFont * maxW / mw));
+      ctx.font = 'bold ' + numFont + 'px ' + FONT_FAMILY;
+      // 编号标签底色块
+      roundRectPath(ctx, padLR, padTop, cw - padLR * 2, numH, 12);
+      ctx.fillStyle = 'rgba(90,74,44,0.09)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(90,74,44,0.30)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = '#8A5A2C';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(codeStr, cw / 2, padTop + numH / 2 + 1);
+      top = padTop + numH + 8;
+      // 编号与名称之间的细分隔线
+      ctx.strokeStyle = 'rgba(150,128,92,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cw * 0.28, top - 4);
+      ctx.lineTo(cw * 0.72, top - 4);
+      ctx.stroke();
+    }
+
+    // 文档名称：竖向排列（保留原有风格）
     var len = Math.max(text.length, 1);
-    var font = Math.floor(Math.min(cw * 0.52, ch * 0.8 / len));
+    var availH = ch - top - padBot;
+    var font = Math.floor(Math.min(cw * 0.52, availH * 0.8 / len));
     var spacing = font * 1.18;
     var total = len * spacing - font * 0.18;
-    var y0 = (ch - total) / 2;
+    var y0 = top + (availH - total) / 2;
     ctx.fillStyle = '#5A4A2C';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = 'bold ' + font + 'px "Microsoft YaHei", "PingFang SC", sans-serif';
+    ctx.font = 'bold ' + font + 'px ' + FONT_FAMILY;
     for (var i = 0; i < len; i++) {
       ctx.fillText(text.charAt(i), cw / 2, y0 + i * spacing + font / 2);
     }
@@ -240,7 +278,7 @@
     var w = rec.dims.w * 0.86, h = rec.dims.h * 0.72;
     var label = new THREE.Mesh(
       new THREE.PlaneGeometry(w, h),
-      new THREE.MeshBasicMaterial({ map: makeLabelTexture(rec.name, h / w), transparent: false })
+      new THREE.MeshBasicMaterial({ map: makeLabelTexture(rec.name, rec.code, h / w), transparent: false })
     );
     label.position.z = rec.dims.d / 2 + 0.006;
     return label;
@@ -436,7 +474,7 @@
     return cabPositions[ci] - uw / 2 + w * (bi + 0.5);
   }
 
-  function createBoxMesh(key, ci, si, bi, name, count) {
+  function createBoxMesh(key, ci, si, bi, name, code, count) {
     var dims = boxDims(ci, si, count);
     var mat = new THREE.MeshPhongMaterial({
       map: binderTexture(ci, si),
@@ -450,11 +488,11 @@
 
     var group = new THREE.Group();
     group.add(mesh);
-    group.add(boxLabelMesh({ dims: dims, name: name }));
+    group.add(boxLabelMesh({ dims: dims, name: name, code: code }));
 
     var x = boxCenterX(ci, bi, count);
     var rec = {
-      key: key, ci: ci, si: si, bi: bi, name: name,
+      key: key, ci: ci, si: si, bi: bi, name: name, code: code,
       group: group, mesh: mesh, mat: mat, color: boxColor(ci, si),
       basePos: new THREE.Vector3(x, BOX_CENTERS[si], FRONT_Z - dims.d / 2),
       dims: dims
@@ -470,7 +508,7 @@
         shelf.forEach(function (name, bi) {
           var key = boxKey(ci, si, bi);
           if (boxes[key]) return;
-          var rec = createBoxMesh(key, ci, si, bi, name, count);
+          var rec = createBoxMesh(key, ci, si, bi, name, Store.codeOf(ci, si, bi), count);
           boxes[key] = rec;
           scene.add(rec.group);
           boxMeshes.push(rec.mesh);
@@ -482,6 +520,7 @@
   function rebuildBoxMesh(key) {
     var rec = boxes[key];
     rec.name = Store.data.cabinets[rec.ci].shelves[rec.si][rec.bi];
+    rec.code = Store.codeOf(rec.ci, rec.si, rec.bi);
     var dims = boxDims(rec.ci, rec.si, Store.data.cabinets[rec.ci].shelves[rec.si].length);
     rec.dims = dims;
     var cnt = Store.data.cabinets[rec.ci].shelves[rec.si].length;
@@ -544,7 +583,7 @@
     shelf.forEach(function (name, bi) {
       var key = boxKey(ci, si, bi);
       if (!boxes[key]) {
-        var rec = createBoxMesh(key, ci, si, bi, name, count);
+        var rec = createBoxMesh(key, ci, si, bi, name, Store.codeOf(ci, si, bi), count);
         boxes[key] = rec;
         scene.add(rec.group);
         boxMeshes.push(rec.mesh);
@@ -596,6 +635,7 @@
     var rec = boxes[key];
     if (!rec) return;
     rec.name = Store.data.cabinets[rec.ci].shelves[rec.si][rec.bi];
+    rec.code = Store.codeOf(rec.ci, rec.si, rec.bi);
     // 移除旧的标签和名称 sprite（保留 mesh，即第一个子对象）
     var toRemove = [];
     rec.group.children.forEach(function (child, i) {
@@ -1096,7 +1136,7 @@
     project: project,
     boxInfo: function (key) {
       var rec = boxes[key];
-      return rec ? { ci: rec.ci, si: rec.si, bi: rec.bi, name: rec.name } : null;
+      return rec ? { ci: rec.ci, si: rec.si, bi: rec.bi, name: rec.name, code: rec.code } : null;
     },
     colorOf: function (ci) {
       var c = boxColor(ci, 0);

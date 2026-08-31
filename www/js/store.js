@@ -144,10 +144,18 @@
     return r.count;
   }
 
-  async function renameBox(ci, si, bi, name) {
+  async function renameBox(ci, si, bi, name, code) {
     name = String(name || '').trim() || DEFAULT_NAME;
-    await request('POST', '/api/rename', { cabinetId: ci, shelf: si, slot: bi, name: name });
-    return data.cabinets[ci].shelves[si][bi] = name;
+    var body = { cabinetId: ci, shelf: si, slot: bi, name: name };
+    if (code !== undefined) body.code = code;
+    await request('POST', '/api/rename', body);
+    data.cabinets[ci].shelves[si][bi] = name;
+    if (code !== undefined) {
+      if (!data.cabinets[ci].codes) data.cabinets[ci].codes = [];
+      if (!data.cabinets[ci].codes[si]) data.cabinets[ci].codes[si] = [];
+      data.cabinets[ci].codes[si][bi] = code;
+    }
+    return name;
   }
 
   async function resetAll() {
@@ -166,15 +174,29 @@
     var results = [];
     if (!q) return results;
     data.cabinets.forEach(function (c, ci) {
+      var codes = (c.codes && c.codes[0]) ? c.codes : null;
       c.shelves.forEach(function (s, si) {
+        var shelfCodes = (codes && codes[si]) || [];
         s.forEach(function (name, bi) {
-          if (name.toLowerCase().indexOf(q) !== -1) {
-            results.push({ ci: ci, si: si, bi: bi, name: name });
+          var code = (shelfCodes[bi] || '');
+          if (name.toLowerCase().indexOf(q) !== -1 || String(code).toLowerCase().indexOf(q) !== -1) {
+            results.push({ ci: ci, si: si, bi: bi, name: name, code: code });
           }
         });
       });
     });
     return results;
+  }
+
+  // 文档编号：优先取后台填写的编号；为空时按“序号”兜底显示（如 01、02 …）
+  function codeOf(ci, si, bi) {
+    var c = data.cabinets[ci];
+    if (!c) return '';
+    var codes = (c.codes && c.codes[si]) || [];
+    var code = codes[bi] != null ? String(codes[bi]).trim() : '';
+    if (code) return code;
+    var n = bi + 1;
+    return n < 10 ? '0' + n : String(n);
   }
 
   function keyOf(ci, si, bi) { return ci + '-' + si + '-' + bi; }
@@ -268,7 +290,8 @@
     setApiBase: setApiBase,
     posLabel: function (r) {
       return (r.ci + 1) + '号柜 · 第' + (3 - r.si) + '层';
-    }
+    },
+    codeOf: codeOf
   };
   Object.defineProperty(window.Store, 'data', { get: function () { return data; } });
 })();

@@ -50,12 +50,12 @@ cd ..
 echo.
 echo [3/3] 复制 APK 到 dist 目录...
 if not exist dist mkdir dist
-copy /Y android\app\build\outputs\apk\debug\app-debug.apk dist\taizhang-v4.0.1-debug.apk >nul
+copy /Y android\app\build\outputs\apk\debug\app-debug.apk dist\taizhang-v4.1.0-debug.apk >nul
 
 echo.
 echo ============================================
 echo   构建完成！
-echo   APK 位置: dist\taizhang-v4.0.1-debug.apk
+echo   APK 位置: dist\taizhang-v4.1.0-debug.apk
 echo ============================================
 pause
 exit /b 0

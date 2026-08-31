@@ -59,6 +59,8 @@ class Box(Base):
     shelf = Column(Integer, nullable=False)
     slot = Column(Integer, nullable=False)
     name = Column(String(128), nullable=False, default='备用')
+    # 文档编号（双重名称：编号 + 名称）；为空时三维场景按“序号”兜底显示
+    code = Column(String(64), nullable=False, default='')
 
 
 class File(Base):

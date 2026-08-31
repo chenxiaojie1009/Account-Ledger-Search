@@ -281,6 +281,7 @@ CREATE TABLE IF NOT EXISTS boxes (
   shelf INTEGER NOT NULL,
   slot INTEGER NOT NULL,
   name TEXT NOT NULL,
+  code TEXT NOT NULL DEFAULT '',
   UNIQUE(cabinet_id, shelf, slot)
 );
 CREATE TABLE IF NOT EXISTS files (
@@ -324,6 +325,7 @@ ensureColumn('users', 'must_change_password', "ALTER TABLE users ADD COLUMN must
 ensureColumn('users', 'last_login_at', "ALTER TABLE users ADD COLUMN last_login_at TEXT");
 ensureColumn('sessions', 'sid', "ALTER TABLE sessions ADD COLUMN sid TEXT");
 ensureColumn('sessions', 'expires_at', "ALTER TABLE sessions ADD COLUMN expires_at TEXT NOT NULL DEFAULT (datetime('now','+7 days'))");
+ensureColumn('boxes', 'code', "ALTER TABLE boxes ADD COLUMN code TEXT NOT NULL DEFAULT ''");
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_sid ON sessions(sid)'); } catch (e) { /* ignore */ }
 try { db.prepare("UPDATE sessions SET sid = lower(hex(randomblob(12))) WHERE sid IS NULL OR sid = ''").run(); } catch (e) { /* ignore */ }
 try { db.prepare("UPDATE sessions SET expires_at = datetime('now','+7 days') WHERE expires_at IS NULL OR expires_at = ''").run(); } catch (e) { /* ignore */ }
@@ -467,20 +469,27 @@ function requestAllowed(ip) {
 // ---------------- 目录 ----------------
 function getCatalog() {
   const cabinets = db.prepare('SELECT * FROM cabinets ORDER BY sort').all();
-  const allBoxes = db.prepare('SELECT cabinet_id, shelf, slot, name FROM boxes ORDER BY cabinet_id, shelf, slot').all();
+  const allBoxes = db.prepare('SELECT cabinet_id, shelf, slot, name, code FROM boxes ORDER BY cabinet_id, shelf, slot').all();
   const byKey = new Map();
+  const byCode = new Map();
   for (const b of allBoxes) {
     const k = b.cabinet_id + '-' + b.shelf;
     if (!byKey.has(k)) byKey.set(k, {});
+    if (!byCode.has(k)) byCode.set(k, {});
     byKey.get(k)[b.slot] = b.name;
+    byCode.get(k)[b.slot] = b.code || '';
   }
   return cabinets.map((c) => {
     const shelves = [];
+    const codes = [];
     for (let s = 0; s < SHELF_COUNT; s++) {
       const m = byKey.get(c.id + '-' + s) || {};
-      shelves.push(Object.keys(m).map(Number).sort((a, b) => a - b).map((i) => m[i]));
+      const cm = byCode.get(c.id + '-' + s) || {};
+      const slots = Object.keys(m).map(Number).sort((a, b) => a - b);
+      shelves.push(slots.map((i) => m[i]));
+      codes.push(slots.map((i) => cm[i] || ''));
     }
-    return { id: c.id, name: c.name, doorType: c.door_type, shelves };
+    return { id: c.id, name: c.name, doorType: c.door_type, shelves, codes };
   });
 }
 function shelfCount(cabinetId, shelf) {
@@ -505,11 +514,17 @@ function setShelfCount(cabinetId, shelf, n) {
   }
   return n;
 }
-function renameBox(cabinetId, shelf, slot, name) {
+function renameBox(cabinetId, shelf, slot, name, code) {
   name = String(name || '').trim().slice(0, 128) || '备用';
   ensureBox(cabinetId, shelf, slot);
-  db.prepare('UPDATE boxes SET name=? WHERE cabinet_id=? AND shelf=? AND slot=?')
-    .run(name, cabinetId, shelf, slot);
+  if (code === undefined) {
+    db.prepare('UPDATE boxes SET name=? WHERE cabinet_id=? AND shelf=? AND slot=?')
+      .run(name, cabinetId, shelf, slot);
+  } else {
+    code = String(code || '').trim().slice(0, 64);
+    db.prepare('UPDATE boxes SET name=?, code=? WHERE cabinet_id=? AND shelf=? AND slot=?')
+      .run(name, code, cabinetId, shelf, slot);
+  }
 }
 function resetCatalog() {
   db.prepare('DELETE FROM boxes').run();
@@ -657,9 +672,10 @@ async function handleApi(req, res, url) {
       if (!src || !Array.isArray(src.shelves)) continue;
       for (let s = 0; s < SHELF_COUNT; s++) {
         const list = Array.isArray(src.shelves[s]) ? src.shelves[s] : [];
+        const codeList = Array.isArray(src.codes) && Array.isArray(src.codes[s]) ? src.codes[s] : null;
         const n = Math.max(1, Math.min(MAX_BOXES_PER_SHELF, list.length));
         setShelfCount(c, s, n);
-        for (let b = 0; b < n; b++) renameBox(c, s, b, list[b]);
+        for (let b = 0; b < n; b++) renameBox(c, s, b, list[b], codeList ? codeList[b] : undefined);
       }
     }
     audit('catalog_update', auth.user, '批量保存目录', clientIp(req));
@@ -685,7 +701,7 @@ async function handleApi(req, res, url) {
     const ci = Number(body.cabinetId), si = Number(body.shelf), bi = Number(body.slot);
     const posErr = validPosition(ci, si, bi);
     if (posErr) return sendError(res, 400, posErr);
-    renameBox(ci, si, bi, body.name);
+    renameBox(ci, si, bi, body.name, body.code);
     audit('catalog_update', auth.user, '重命名台账', clientIp(req));
     return sendJSON(res, 200, { ok: true, cabinets: getCatalog() });
   }
@@ -702,6 +718,7 @@ async function handleApi(req, res, url) {
       const layer = Number(row.layer);
       const slot = Number(row.slot);
       const name = String(row.name == null ? '' : row.name).trim();
+      const code = String(row.code == null ? '' : row.code).trim().slice(0, 64);
       const lineNo = idx + 1;
       if (!(cabinet >= 1 && cabinet <= CABINET_COUNT)) { errors.push('第' + lineNo + '行：柜号应为1-' + CABINET_COUNT); return; }
       if (!(layer >= 1 && layer <= SHELF_COUNT)) { errors.push('第' + lineNo + '行：层号应为1-' + SHELF_COUNT); return; }
@@ -711,7 +728,7 @@ async function handleApi(req, res, url) {
       const si = SHELF_COUNT - layer;
       const bi = slot - 1;
       if (shelfCount(ci, si) < slot) setShelfCount(ci, si, Math.min(MAX_BOXES_PER_SHELF, slot));
-      renameBox(ci, si, bi, name);
+      renameBox(ci, si, bi, name, code);
       imported++;
     });
     audit('import', auth.user, '导入 ' + imported + ' 条，失败 ' + errors.length + ' 条', clientIp(req));

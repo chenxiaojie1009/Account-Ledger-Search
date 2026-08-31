@@ -335,13 +335,14 @@
 
   function showDetailModal(ci, si, bi) {
     var name = Store.data.cabinets[ci].shelves[si][bi];
+    var code = Store.codeOf(ci, si, bi);
     var loc = (ci + 1) + '号柜 · 第 ' + layerNo(si) + ' 层 · 第 ' + (bi + 1) + ' 个';
     openModal(
       '<div class="modal" id="detailModal">' +
       '<div class="modal-card detail-card">' +
       '<div class="modal-title"><span class="ic-wrap">' + ICON_FILE + '</span>台账详情</div>' +
       '<div class="detail-loc">' + ICON_PIN + '<span>' + escapeHtml(loc) + '</span></div>' +
-      '<div class="detail-name-readonly"><b>' + escapeHtml(name) + '</b></div>' +
+      '<div class="detail-name-readonly"><b>' + escapeHtml(code) + ' · ' + escapeHtml(name) + '</b></div>' +
       '<div class="detail-files-head"><span>台账文件</span><span class="file-count" id="fileCount"></span></div>' +
       '<div class="detail-files" id="detailFiles"><span class="shelf-empty">加载中…</span></div>' +
       '<div class="modal-actions" style="justify-content:flex-start"><button class="btn btn-ghost" id="detailClose" type="button">关闭</button></div>' +
@@ -594,10 +595,13 @@
     if (!q) { hideSuggest(); return; }
     var all = [];
     Store.data.cabinets.forEach(function (c, ci) {
+      var codes = c.codes || [];
       c.shelves.forEach(function (shelf, si) {
+        var shelfCodes = codes[si] || [];
         shelf.forEach(function (name, bi) {
-          if (name.toLowerCase().indexOf(q.toLowerCase()) >= 0) {
-            all.push({ ci: ci, si: si, bi: bi, name: name });
+          var code = (shelfCodes[bi] || '');
+          if (name.toLowerCase().indexOf(q.toLowerCase()) >= 0 || String(code).toLowerCase().indexOf(q.toLowerCase()) >= 0) {
+            all.push({ ci: ci, si: si, bi: bi, name: name, code: code });
           }
         });
       });
@@ -612,7 +616,7 @@
     box.innerHTML = suggestItems.map(function (r, i) {
       return '<div class="suggest-item" data-i="' + i + '">' +
         '<svg class="s-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
-        '<span class="s-name">' + highlightMatch(r.name, q) + '</span>' +
+        '<span class="s-name">' + (r.code ? '<b class="s-code">' + escapeHtml(r.code) + '</b> ' : '') + highlightMatch(r.name, q) + '</span>' +
         '<span class="s-loc">' + (r.ci + 1) + '号柜·' + layerNo(r.si) + '层</span></div>';
     }).join('');
     box.classList.add('show');
@@ -725,7 +729,7 @@
     var p = Scene3D.project(key);
     if (!p || !p.visible) { els.boxTip.hidden = true; return; }
     var hint = (focusKey === key) ? '再次点击收回' : '点击聚焦放大';
-    els.boxTip.innerHTML = escapeHtml(info.name) +
+    els.boxTip.innerHTML = (info.code ? escapeHtml(info.code) + ' ' : '') + escapeHtml(info.name) +
       '<small>' + (info.ci + 1) + '号柜 · 第 ' + layerNo(info.si) + ' 层 · ' + hint + '</small>';
     els.boxTip.style.left = p.x + 'px';
     els.boxTip.style.top = p.y + 'px';
@@ -864,7 +868,7 @@
     if (!info) return;
     var p = Scene3D.project(key);
     if (!p || !p.visible) { els.foundTag.hidden = true; return; }
-    els.foundTag.innerHTML = '<b>' + escapeHtml(info.name) + '</b><small>' + (info.ci + 1) + '号柜 · 第 ' + layerNo(info.si) + ' 层</small>';
+    els.foundTag.innerHTML = '<b>' + (info.code ? escapeHtml(info.code) + ' ' : '') + escapeHtml(info.name) + '</b><small>' + (info.ci + 1) + '号柜 · 第 ' + layerNo(info.si) + ' 层</small>';
     els.foundTag.style.left = p.x + 'px';
     els.foundTag.style.top = p.y + 'px';
   }

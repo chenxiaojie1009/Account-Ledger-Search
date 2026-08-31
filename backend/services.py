@@ -52,20 +52,27 @@ def get_catalog(db: Session) -> list:
     cabinets = db.query(Cabinet).order_by(Cabinet.sort).all()
     boxes = db.query(Box).order_by(Box.cabinet_id, Box.shelf, Box.slot).all()
     by_key: dict = {}
+    by_code: dict = {}
     for b in boxes:
         by_key.setdefault((b.cabinet_id, b.shelf), {})[b.slot] = b.name
+        by_code.setdefault((b.cabinet_id, b.shelf), {})[b.slot] = b.code or ''
     out = []
     for c in cabinets:
         shelves = []
+        codes = []
         for s in range(config.SHELF_COUNT):
             m = by_key.get((c.id, s), {})
-            shelves.append([m[i] for i in sorted(m)])
+            cm = by_code.get((c.id, s), {})
+            slots = sorted(m)
+            shelves.append([m[i] for i in slots])
+            codes.append([cm.get(i, '') for i in slots])
         out.append({
             "id": c.id,
             "name": c.name,
             "doorType": c.door_type,
             "shelfColors": shelf_colors_of(c),
             "shelves": shelves,
+            "codes": codes,
         })
     return out
 
@@ -93,12 +100,14 @@ def set_shelf_count(db: Session, cabinet_id: int, shelf: int, n: int) -> int:
     return n
 
 
-def rename_box(db: Session, cabinet_id: int, shelf: int, slot: int, name: str) -> None:
+def rename_box(db: Session, cabinet_id: int, shelf: int, slot: int, name: str, code: Optional[str] = None) -> None:
     name = (name or "").strip() or "备用"
     name = name[:128]
     ensure_box(db, cabinet_id, shelf, slot)
     row = db.query(Box).filter_by(cabinet_id=cabinet_id, shelf=shelf, slot=slot).first()
     row.name = name
+    if code is not None:
+        row.code = (code or "").strip()[:64]
     db.commit()
 
 
@@ -112,6 +121,7 @@ def reset_catalog(db: Session) -> None:
                 ensure_box(db, c.id, s, b)
     for b in db.query(Box).filter(Box.name != "备用").all():
         b.name = "备用"
+        b.code = ""
     db.commit()
 
 
@@ -128,14 +138,17 @@ def apply_config(db: Session, new_cabs: list) -> None:
     old_data = {}
     for i, cab in enumerate(old):
         shelves = []
+        codes = []
         for s in range(config.SHELF_COUNT):
             rows = db.query(Box).filter_by(cabinet_id=cab.id, shelf=s).order_by(Box.slot).all()
             shelves.append([r.name for r in rows])
+            codes.append([r.code or '' for r in rows])
         old_data[i] = {
             "name": cab.name,
             "doorType": cab.door_type,
             "shelfColors": cab.shelf_colors,
             "shelves": shelves,
+            "codes": codes,
         }
     # 2) 删除多余柜的文件，再清空柜体与台账
     for i in range(n, old_count):
@@ -162,10 +175,14 @@ def apply_config(db: Session, new_cabs: list) -> None:
         old = old_data.get(i)
         for s in range(config.SHELF_COUNT):
             if old and s < len(old["shelves"]) and old["shelves"][s]:
+                old_codes = old.get("codes") or []
                 for b, nm in enumerate(old["shelves"][s]):
                     if b >= config.MAX_BOXES_PER_SHELF:
                         break
-                    db.add(Box(cabinet_id=i, shelf=s, slot=b, name=(nm or "备用")[:128]))
+                    code = ''
+                    if s < len(old_codes) and b < len(old_codes[s]):
+                        code = (old_codes[s][b] or '')[:64]
+                    db.add(Box(cabinet_id=i, shelf=s, slot=b, name=(nm or "备用")[:128], code=code))
             else:
                 for b in range(config.DEFAULT_BOXES_PER_SHELF):
                     db.add(Box(cabinet_id=i, shelf=s, slot=b, name="备用"))
@@ -180,6 +197,7 @@ def import_rows(db: Session, rows: list) -> dict:
     for idx, r in enumerate(rows):
         line = idx + 1
         cabinet, layer, slot, name = r.cabinet, r.layer, r.slot, (r.name or "").strip()
+        code = (getattr(r, "code", None) or "").strip()[:64]
         if not (1 <= cabinet <= cab_count):
             errors.append(f"第{line}行：柜号应为1-{cab_count}")
             continue
@@ -200,12 +218,13 @@ def import_rows(db: Session, rows: list) -> dict:
             set_shelf_count(db, ci, si, min(config.MAX_BOXES_PER_SHELF, slot))
         row = ensure_box(db, ci, si, bi)
         row.name = name[:128]
+        row.code = code
         imported += 1
     db.commit()
     return {"imported": imported, "failed": len(errors), "errors": errors}
 
 
-def update_catalog_shelf(db: Session, ci: int, names: List[str]) -> None:
+def update_catalog_shelf(db: Session, ci: int, names: List[str], codes: Optional[list] = None) -> None:
     """保存某柜全部名称（数量不变）"""
     for si in range(config.SHELF_COUNT):
         shelf_names = names[si] if si < len(names) else []
@@ -213,6 +232,8 @@ def update_catalog_shelf(db: Session, ci: int, names: List[str]) -> None:
         for bi, name in enumerate(shelf_names[:cur]):
             row = ensure_box(db, ci, si, bi)
             row.name = (name or "").strip()[:128] or "备用"
+            if codes and si < len(codes) and bi < len(codes[si]):
+                row.code = (codes[si][bi] or "").strip()[:64]
     db.commit()
 
 
@@ -222,7 +243,7 @@ def build_backup(db: Session) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         manifest = {
-            "version": 2,
+            "version": 3,
             "createdAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "cabinets": get_catalog(db),
             "files": [],
@@ -312,12 +333,15 @@ def restore_from_backup(db: Session, zf: zipfile.ZipFile, manifest: dict) -> Non
     for ci in range(len(cabinets)):
         src = cabinets[ci] or {}
         shelves = src.get("shelves") or []
+        codes = src.get("codes") or []
         for si in range(config.SHELF_COUNT):
             names = shelves[si] if si < len(shelves) else []
             n = max(1, min(config.MAX_BOXES_PER_SHELF, len(names)))
             for bi in range(n):
                 row = ensure_box(db, ci, si, bi)
                 row.name = (names[bi] if bi < len(names) else "备用") or "备用"
+                if si < len(codes) and bi < len(codes[si]):
+                    row.code = (codes[si][bi] or "")[:64]
     db.flush()
 
     # 3) 还原文件（限制总解压大小，防 zip 炸弹）

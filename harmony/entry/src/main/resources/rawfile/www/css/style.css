@@ -106,6 +106,8 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 /* ============================================================
    台账聚焦后顶部「查看详情」按钮
    ============================================================ */
+.btn-box-detail[hidden] { display: none; }
+
 .btn-box-detail {
   position: fixed; top: max(16px, env(safe-area-inset-top)); left: 50%;
   transform: translateX(-50%);
@@ -124,7 +126,7 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 .btn-box-detail .ic { width: 16px; height: 16px; }
 @keyframes detail-btn-in {
   from { transform: translateX(-50%) translateY(-14px) scale(.9); opacity: 0; }
-  to { transform: translateX(-50%) none; opacity: 1; }
+  to { transform: translateX(-50%); opacity: 1; }
 }
 /* ============================================================
    顶部按钮
@@ -261,6 +263,7 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 .suggest-item:hover, .suggest-item.active { background: var(--accent-soft); }
 .suggest-item .s-ic { width: 16px; height: 16px; color: var(--text-3); flex: none; }
 .suggest-item .s-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.suggest-item .s-code { color: var(--accent-deep); font-weight: 700; margin-right: 2px; }
 .suggest-item .s-loc { font-size: 12px; color: var(--text-3); flex: none; }
 .suggest-item mark { background: none; color: var(--accent-deep); font-weight: 700; }
 

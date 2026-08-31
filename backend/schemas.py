@@ -34,6 +34,7 @@ class RenameIn(BaseModel):
     shelf: int
     slot: int
     name: str
+    code: Optional[str] = None
 
 
 class UploadIn(BaseModel):
@@ -55,6 +56,7 @@ class ImportRowIn(BaseModel):
     layer: int
     slot: int
     name: str
+    code: str = ''
 
 
 class ImportIn(BaseModel):
@@ -64,6 +66,7 @@ class ImportIn(BaseModel):
 class UpdateCatalogIn(BaseModel):
     cabinetId: int
     shelves: List[List[str]]
+    codes: Optional[List[List[str]]] = None
 
 
 class ConfigCabinetIn(BaseModel):
@@ -100,6 +103,7 @@ class CabinetOut(BaseModel):
     doorType: str
     shelfColors: Optional[List[str]] = None
     shelves: List[List[str]]
+    codes: List[List[str]] = []
 
 
 class CatalogOut(BaseModel):

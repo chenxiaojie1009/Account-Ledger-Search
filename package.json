@@ -1,6 +1,6 @@
 {
   "name": "taizhang-sim",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "台账位置查找仿真系统",
   "private": true,
   "scripts": {

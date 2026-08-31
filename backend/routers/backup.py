@@ -60,10 +60,14 @@ def restore_backup(body: RestoreIn, request: Request, user: User = Depends(requi
             raise ValueError("备份文件缺少目录数据")
     except Exception as e:
         return {"ok": False, "error": "备份文件无效：" + str(e)}
+    # user 对象在还原流程中可能被 expunge_all 脱离会话，先捕获审计所需字段
+    _uid = user.id
+    _uname = user.username
     try:
         restore_from_backup(db, zf, manifest)
     except ValueError as e:
         return {"ok": False, "error": "还原失败：" + str(e)}
-    audit(db, user, "backup_restore", "从备份还原数据", client_ip(request))
+    from types import SimpleNamespace
+    audit(db, SimpleNamespace(id=_uid, username=_uname), "backup_restore", "从备份还原数据", client_ip(request))
     from backend.services import get_catalog
     return {"ok": True, "cabinets": get_catalog(db)}

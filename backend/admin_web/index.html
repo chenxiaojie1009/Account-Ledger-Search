@@ -294,6 +294,8 @@ a { text-decoration: none; }
 }
 .box-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,125,249,.1); }
 .box-row input:disabled { background: var(--fill); color: var(--text-3); }
+.box-row .box-code { flex: 0 0 64px; width: 64px; padding: 0 6px; text-align: center; font-weight: 700; color: var(--accent-deep); }
+.box-row .box-code::placeholder { font-weight: 400; color: var(--text-3); }
 
 /* 文件管理 */
 .filter-bar {
@@ -624,7 +626,7 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
             <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             文档名称批量导入
           </h3>
-          <p class="card-sub">按模板导入：先「下载模板」得到 CSV，用 Excel 填写每行的「台账名称」后保存为 CSV，再「选择 CSV 上传导入」。<br>格式：<code>柜号,层号,序号,台账名称</code>，层号 1=第 1 层（最上层），序号 1=每个柜每层从左到右第 1 个。</p>
+          <p class="card-sub">按模板导入：先「下载模板」得到 CSV，用 Excel 填写每行的「文档编号」与「台账名称」后保存为 CSV，再「选择 CSV 上传导入」；也可「导出 CSV」保存当前目录。<br>格式：<code>柜号,层号,序号,文档编号,台账名称</code>，层号 1=第 1 层（最上层），序号 1=每个柜每层从左到右第 1 个，编号留空时三维场景按序号显示。兼容旧版四列 <code>柜号,层号,序号,台账名称</code> 模板。</p>
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             <button id="tplBtn" class="btn btn-primary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -633,6 +635,10 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
             <button id="impBtn" class="btn btn-ghost">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               选择 CSV 上传导入
+            </button>
+            <button id="expBtn" class="btn btn-ghost">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              导出 CSV
             </button>
             <input id="impFile" type="file" accept=".csv,text/csv" style="display:none">
           </div>
@@ -914,8 +920,11 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
         '<span class="step-val">' + count + '</span>' +
         '<button class="step-btn" data-act="inc" data-si="' + si + '"' + (count >= 40 ? ' disabled' : '') + '>+</button>' +
         '</div></div><div class="boxes">';
+      var shelfCodes = (cab.codes && cab.codes[si]) || [];
       shelf.forEach(function (name, bi) {
-        html += '<div class="box-row"><input class="box-name" data-si="' + si + '" data-bi="' + bi + '" maxlength="40" value="' + esc(name) + '"></div>';
+        var code = (shelfCodes[bi] || '');
+        var defCode = bi + 1 < 10 ? '0' + (bi + 1) : '' + (bi + 1);
+        html += '<div class="box-row"><input class="box-code" data-si="' + si + '" data-bi="' + bi + '" maxlength="64" placeholder="' + defCode + '" title="文档编号（留空按序号显示）" value="' + esc(code) + '"><input class="box-name" data-si="' + si + '" data-bi="' + bi + '" maxlength="40" value="' + esc(name) + '"></div>';
       });
       html += '</div></div>';
     }
@@ -941,14 +950,20 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
   }
   function saveAll() {
     var shelves = catalog[curCab].shelves.map(function (s) { return s.slice(); });
+    var codes = shelves.map(function (s) { return s.map(function () { return ''; }); });
+    if (catalog[curCab].codes) codes = catalog[curCab].codes.map(function (s) { return s.slice(); });
     document.querySelectorAll('#shelves .box-name').forEach(function (inp) {
       var si = Number(inp.dataset.si), bi = Number(inp.dataset.bi);
       if (shelves[si] && shelves[si][bi] != null) shelves[si][bi] = inp.value.trim() || '备用';
     });
-    api('POST', '/api/update-catalog', { cabinetId: curCab, shelves: shelves }).then(function (r) {
+    document.querySelectorAll('#shelves .box-code').forEach(function (inp) {
+      var si = Number(inp.dataset.si), bi = Number(inp.dataset.bi);
+      if (codes[si] && codes[si][bi] != null) codes[si][bi] = inp.value.trim();
+    });
+    api('POST', '/api/update-catalog', { cabinetId: curCab, shelves: shelves, codes: codes }).then(function (r) {
       catalog = r.cabinets;
       renderDir();
-      toast('已保存全部名称');
+      toast('已保存全部名称与编号');
     }).catch(function (e) { toast('保存失败：' + e.message, 'err'); });
   }
 
@@ -981,8 +996,10 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
       slotSel.innerHTML += '<option value="' + (i - 1) + '">第' + i + '个</option>';
     }
     slotSel.value = prev;
-    var name = catalog[ci].shelves[si][Number(slotSel.value)];
-    $('#fName').textContent = name || '';
+    var bi = Number(slotSel.value);
+    var code = (catalog[ci].codes && catalog[ci].codes[si]) ? (catalog[ci].codes[si][bi] || '') : '';
+    var name = catalog[ci].shelves[si][bi];
+    $('#fName').textContent = (code ? code + ' ' : '') + (name || '');
     loadFiles();
   }
   function currentBox() {
@@ -1288,13 +1305,14 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
     return v;
   }
   function buildTemplateCsv() {
-    var lines = ['柜号,层号,序号,台账名称'];
+    var lines = ['柜号,层号,序号,文档编号,台账名称'];
     catalog.forEach(function (c, ci) {
       for (var layer = 1; layer <= 3; layer++) {
         var si = 3 - layer;
         var shelf = c.shelves[si] || [];
+        var codes = (c.codes && c.codes[si]) || [];
         shelf.forEach(function (name, bi) {
-          lines.push([ci + 1, layer, bi + 1, csvCell(name)].join(','));
+          lines.push([ci + 1, layer, bi + 1, csvCell(codes[bi] || ''), csvCell(name)].join(','));
         });
       }
     });
@@ -1306,10 +1324,32 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
     var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = '台账名称导入模板.csv';
+    a.download = '台账目录导入模板.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
     toast('模板已下载');
+  }
+  function exportCsv() {
+    if (!catalog) { toast('请先加载目录', 'warn'); return; }
+    var lines = ['柜号,层号,序号,文档编号,台账名称'];
+    catalog.forEach(function (c, ci) {
+      for (var layer = 1; layer <= 3; layer++) {
+        var si = 3 - layer;
+        var shelf = c.shelves[si] || [];
+        var codes = (c.codes && c.codes[si]) || [];
+        shelf.forEach(function (name, bi) {
+          lines.push([ci + 1, layer, bi + 1, csvCell(codes[bi] || ''), csvCell(name)].join(','));
+        });
+      }
+    });
+    var csv = lines.join('\r\n') + '\r\n';
+    var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '台账目录导出.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+    toast('目录已导出');
   }
   function decodeBytes(buf) {
     var utf8 = new TextDecoder('utf-8').decode(buf);
@@ -1357,11 +1397,18 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
       for (var i = start; i < rows.length; i++) {
         var r = rows[i];
         if (!r.length) continue;
-        if (!r[0] && !r[1] && !r[2] && !r[3]) continue;
+        if (!r[0] && !r[1] && !r[2] && !r[3] && !r[4]) continue;
         var cabinet = parseInt(r[0], 10), layer = parseInt(r[1], 10), slot = parseInt(r[2], 10);
-        var name = (r[3] == null ? '' : String(r[3])).trim();
+        var code, name;
+        if (r.length >= 5) {
+          code = (r[3] == null ? '' : String(r[3])).trim();
+          name = (r[4] == null ? '' : String(r[4])).trim();
+        } else {
+          code = '';
+          name = (r[3] == null ? '' : String(r[3])).trim();
+        }
         if (isNaN(cabinet) || isNaN(layer) || isNaN(slot) || !name) errors.push('第' + (i + 1) + '行：数据不完整');
-        else items.push({ cabinet: cabinet, layer: layer, slot: slot, name: name });
+        else items.push({ cabinet: cabinet, layer: layer, slot: slot, name: name, code: code });
       }
       if (!items.length) {
         result.style.display = '';
@@ -1390,6 +1437,7 @@ code { background: var(--fill); padding: 2px 7px; border-radius: 5px; font-size:
     reader.readAsArrayBuffer(file);
   }
   $('#tplBtn').addEventListener('click', downloadTemplate);
+  $('#expBtn').addEventListener('click', exportCsv);
   $('#impBtn').addEventListener('click', function () { $('#impFile').click(); });
   $('#impFile').addEventListener('change', function () {
     if (this.files && this.files[0]) importCsv(this.files[0]);
