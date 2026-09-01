@@ -145,9 +145,14 @@
         toast('欢迎回来，' + (user.displayName || user.username));
         afterLogin();
       } catch (e) {
-        var msg = e.message || '登录失败';
-        if (/failed to fetch|network|fetch|load failed/i.test(msg)) {
+        var msg = (e && e.message) ? e.message : '登录失败';
+        if (typeof msg !== 'string') { try { msg = JSON.stringify(msg); } catch (ee) { msg = String(msg); } }
+        if (/failed to fetch|network|fetch|load failed|net::ERR/i.test(msg)) {
           msg = '无法连接服务器，请确认：①后端地址填电脑局域网 IP（不要用 127.0.0.1）；②平板与电脑同一局域网；③电脑防火墙放行 10600 端口。';
+        }
+        // 后端 422 等返回的 detail 是数组，补全到错误信息里便于排查
+        if (e && e.payload && e.payload.detail) {
+          try { msg += '（' + JSON.stringify(e.payload.detail) + '）'; } catch (ee) { /* ignore */ }
         }
         $('#loginError').textContent = msg;
         btn.disabled = false;

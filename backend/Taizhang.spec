@@ -5,7 +5,8 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 repo_root = Path(SPECPATH).resolve().parent  # SPECPATH = backend 目录，其父目录为项目根
 admin_web_dir = Path(SPECPATH).resolve() / 'admin_web'
-datas = collect_data_files('fastapi') + [(str(admin_web_dir), 'admin_web')]
+repo_www = repo_root / 'www'
+datas = collect_data_files('fastapi') + [(str(admin_web_dir), 'admin_web'), (str(repo_www), 'www')]
 hiddenimports = (
     collect_submodules('uvicorn')
     + collect_submodules('fastapi')

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from backend import config
-from backend.database import ADMIN_WEB_DIR, Base, SessionLocal, engine
+from backend.database import ADMIN_WEB_DIR, WWW_DIR, Base, SessionLocal, engine
 from backend.models import Box, Cabinet, User
 from backend.routers import audit as audit_router
 from backend.routers import auth as auth_router
@@ -41,11 +41,8 @@ ADMIN_CSP = (
     "form-action 'self'"
 )
 
-# 默认允许的来源：本机 WebView / 预览页 / 局域网访问（可在 TZ_ALLOWED_ORIGINS 追加）
-_DEFAULT_ORIGIN_REGEX = (
-    r"https?://(localhost|127\.0\.0\.1|"
-    r"10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?"
-)
+# 默认允许的来源：本机 WebView / 预览页 / 局域网访问 / 鸿蒙本地资源页(null)（可在 TZ_ALLOWED_ORIGINS 追加）
+_DEFAULT_ORIGIN_REGEX = r"(https?://.*|null)"
 
 
 def _cors_origins() -> list:
@@ -147,5 +144,9 @@ def create_app() -> FastAPI:
 
     if ADMIN_WEB_DIR.exists():
         app.mount("/admin", StaticFiles(directory=str(ADMIN_WEB_DIR), html=True), name="admin")
+
+    # 三维定位前端（www）：鸿蒙/浏览器同源加载入口，避免跨域
+    if WWW_DIR.exists():
+        app.mount("/www", StaticFiles(directory=str(WWW_DIR), html=True), name="www")
 
     return app

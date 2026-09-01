@@ -93,8 +93,13 @@
   function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
   function easeOutBack(t) { var c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
 
-  function addTween(dur, ease, onUpdate, onDone) {
-    tweens.push({ t0: clock.elapsedTime, dur: dur, ease: ease, onUpdate: onUpdate, onDone: onDone });
+  function addTween(dur, ease, onUpdate, onDone, type) {
+    tweens.push({ t0: clock.elapsedTime, dur: dur, ease: ease, onUpdate: onUpdate, onDone: onDone, type: type || '' });
+  }
+  // 取消指定类型的进行中动画（如相机飞行动画），避免连续点击时多个相机 tween 叠加互相覆盖
+  function cancelTweens(type) {
+    if (!type) return;
+    tweens = tweens.filter(function (tw) { return tw.type !== type; });
   }
 
   function boxKey(ci, si, bi) { return ci + '-' + si + '-' + bi; }
@@ -847,11 +852,12 @@
       Math.cos(az) * Math.cos(el)
     );
     var endPos = target.clone().add(dir.multiplyScalar(dist));
+    cancelTweens('cam');
     addTween(dur || 0.9, easeInOutCubic, function (k) {
       camera.position.lerpVectors(startPos, endPos, k);
       controls.target.lerpVectors(startTarget, target, k);
       controls.update();
-    }, done || null);
+    }, done || null, 'cam');
   }
 
   function flyToBox(key, dur, done) {
@@ -862,17 +868,27 @@
 
     var startPos = camera.position.clone();
     var startTarget = controls.target.clone();
+    // 只取当前视角的水平方位角；俯仰固定为 EL，避免“沿当前视线方向飞”产生的正反馈，
+    // 导致连续点击台账时相机越点越往下仰（每次方向都带上前一次的俯仰角）。
     var dir = startPos.clone().sub(startTarget).normalize();
-    var dist = 2.4; // 固定聚焦距离，保证每次点击/定位后画面大小一致，不会越点越大
-    var endPos = boxPos.clone().add(new THREE.Vector3(0, 0.18, 0)).add(dir.clone().multiplyScalar(dist));
+    var az = Math.atan2(dir.x, dir.z);
+    var EL = 0.21;    // 固定俯仰角 ≈12°，每次聚焦视角一致
+    var dist = 2.4;   // 固定聚焦距离，保证每次点击/定位后画面大小一致，不会越点越大
+    var endPos = boxPos.clone().add(new THREE.Vector3(
+      Math.sin(az) * Math.cos(EL) * dist,
+      Math.sin(EL) * dist,
+      Math.cos(az) * Math.cos(EL) * dist
+    ));
+    endPos.y += 0.18;
     if (endPos.y < 0.4) endPos.y = 0.4;
     var endTarget = boxPos.clone();
 
+    cancelTweens('cam');
     addTween(dur || 1.15, easeInOutCubic, function (k) {
       camera.position.lerpVectors(startPos, endPos, k);
       controls.target.lerpVectors(startTarget, endTarget, k);
       controls.update();
-    }, done || null);
+    }, done || null, 'cam');
   }
 
   /* ---------------- 拾取 ---------------- */
